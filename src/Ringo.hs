@@ -1,0 +1,2 @@
+module Ringo
+    () where
