@@ -9,43 +9,42 @@ type ColumnName = Text
 type ColumnType = Text
 type TableName = Text
 
+data Nullable = Nullable | NotNullable deriving (Eq, Enum, Show)
+
 data Column = Column
-              { columnName     :: ColumnName
-              , columnType     :: ColumnType
-              , columnNullable :: Bool
-              , columnDefault  :: Maybe Text
+              { columnName        :: ColumnName
+              , columnType        :: ColumnType
+              , columnNullable    :: Nullable
               } deriving (Eq, Show)
 
-data ColumnRef = ColumnRef ColumnName deriving (Eq, Show)
-
-data TableContraint = PrimaryKey ColumnRef
-                    | UniqueKey [ColumnRef]
-                    | ForeignKey TableRef [(ColumnRef, ColumnRef)]
+data TableContraint = PrimaryKey ColumnName
+                    | UniqueKey [ColumnName]
+                    | ForeignKey TableName [(ColumnName, ColumnName)]
                     deriving (Eq, Show)
 
 data Table = Table
-             { tableName :: TableName
-             , tableColumns :: [Column]
+             { tableName        :: TableName
+             , tableColumns     :: [Column]
              , tableConstraints :: [TableContraint]
              } deriving (Eq, Show)
 
-data TableRef = TableRef TableName deriving (Eq, Show)
+data TimeUnit = Second | Minute | Hour | Day | Week | Month | Year
+                deriving (Eq, Enum, Show)
 
-column :: ColumnName -> ColumnType -> Column
-column cname ctype = Column cname ctype True Nothing
+data Fact = Fact
+            { factName      :: TableName
+            , factTableName :: TableName
+            , factColumns   :: [FactColumn]
+            } deriving (Eq, Show)
 
-colNotNull :: Column -> Column
-colNotNull c = c { columnNullable = False }
+data FactColumn = DimTime ColumnName
+                | NoDimId ColumnName
+                | DimId TableName ColumnName
+                | DimVal TableName ColumnName
+                deriving (Eq, Show)
 
-colDefault :: Text -> Column -> Column
-colDefault cdefault c = c { columnDefault = Just cdefault }
-
-primaryKey :: ColumnName -> TableContraint
-primaryKey = PrimaryKey . ColumnRef
-
-uniqueKey :: [ColumnName] -> TableContraint
-uniqueKey = UniqueKey . map ColumnRef
-
-foreignKey :: TableName -> [(ColumnName, ColumnName)] -> TableContraint
-foreignKey tableName =
-  ForeignKey (TableRef tableName) . map (\(c1, c2) -> (ColumnRef c1, ColumnRef c2))
+factColumnName :: FactColumn -> ColumnName
+factColumnName (DimTime cName)  = cName
+factColumnName (NoDimId cName)  = cName
+factColumnName (DimId _ cName)  = cName
+factColumnName (DimVal _ cName) = cName
