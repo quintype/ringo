@@ -73,3 +73,13 @@ defSettings = Settings
               , settingFactPrefix = "fact_"
               , settingTimeUnit   = Minute
               }
+
+data ValidationError = MissingTable TableName
+                     | MissingFact TableName
+                     | MissingColumn TableName ColumnName
+                     deriving (Eq, Show)
+
+data Env = Env { envTables   :: [Table]
+               , envFacts    :: [Fact]
+               , envSettings :: Settings
+               } deriving (Eq, Show)

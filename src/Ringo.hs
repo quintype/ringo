@@ -6,15 +6,10 @@ import Ringo.Types
 import qualified Data.Map  as Map
 import qualified Data.Text as Text
 
+import Control.Monad.Reader (Reader, asks)
 import Data.Maybe  (mapMaybe, fromMaybe, fromJust)
 import Data.Monoid ((<>))
 import Data.List   (nub, find)
-import Data.Text   (Text)
-
-data ValidationError = MissingTable TableName
-                     | MissingFact TableName
-                     | MissingColumn TableName ColumnName
-                     deriving (Eq, Show)
 
 findTable :: TableName -> [Table] -> Maybe Table
 findTable tName = find ((== tName) . tableName)
@@ -30,12 +25,14 @@ checkTableForCol tab colName =
   [ MissingColumn (tableName tab) colName |
       not . any ((colName ==) . columnName) . tableColumns $ tab ]
 
-validateTable :: [Table] -> Table -> [ValidationError]
-validateTable tables table = concatMap checkConstraint . tableConstraints $ table
+validateTable :: Table -> Reader Env [ValidationError]
+validateTable table = do
+  tables <- asks envTables
+  return . concatMap (checkConstraint tables) . tableConstraints $ table
   where
-    checkConstraint (PrimaryKey colName)    = checkTableForCol table colName
-    checkConstraint (UniqueKey columnNames) = checkTableForColRefs table columnNames
-    checkConstraint (ForeignKey oTableName columnNames) =
+    checkConstraint _ (PrimaryKey colName)    = checkTableForCol table colName
+    checkConstraint _ (UniqueKey columnNames) = checkTableForColRefs table columnNames
+    checkConstraint tables (ForeignKey oTableName columnNames) =
       case findTable oTableName tables of
         Just oTable -> checkTableForColRefs table (map fst columnNames)
                          ++ checkTableForColRefs oTable (map snd columnNames)
@@ -43,35 +40,45 @@ validateTable tables table = concatMap checkConstraint . tableConstraints $ tabl
 
     checkTableForColRefs tab = concatMap (checkTableForCol tab)
 
-validateFact :: [Table] -> [Fact] -> Fact -> [ValidationError]
-validateFact tables facts Fact {..} =
+validateFact :: Fact -> Reader Env [ValidationError]
+validateFact Fact {..} = do
+  tables <- asks envTables
   case findTable factTableName tables of
-    Nothing    -> [ MissingTable factTableName ]
-    Just table -> validateTable tables table
-                    ++ concatMap checkFactParents factParentNames
-                    ++ concatMap (checkColumn table) factColumns
+    Nothing    -> return [ MissingTable factTableName ]
+    Just table -> do
+      tableVs   <- validateTable table
+      parentVs  <- concat <$> mapM checkFactParents factParentNames
+      let colVs = concatMap (checkColumn table) factColumns
+      return $ tableVs ++ parentVs ++ colVs
   where
-    checkFactParents fName = case findFact fName facts of
-      Nothing    -> [ MissingFact fName ]
-      Just pFact -> validateFact tables facts pFact
+    checkFactParents fName = do
+      facts  <- asks envFacts
+      case findFact fName facts of
+        Nothing    -> return [ MissingFact fName ]
+        Just pFact -> validateFact pFact
+
     checkColumn table = maybe [] (checkTableForCol table) . factColumnName
 
-withFactValidation :: [Table] -> [Fact] -> Fact -> (Table -> a) -> Either [ValidationError] a
-withFactValidation tables facts fact func =
-  let errors = validateFact tables facts fact
-  in if not $ null errors
-    then Left errors
-    else Right . func . fromJust $ findTable (factTableName fact) tables
+withFactValidation :: Fact -> (Table -> Reader Env a) -> Reader Env (Either [ValidationError] a)
+withFactValidation fact func = do
+  tables <- asks envTables
+  errors <- validateFact fact
+  if not $ null errors
+    then return $ Left errors
+    else fmap Right . func . fromJust . findTable (factTableName fact) $ tables
 
-extractDimensions' :: [Table] -> Text -> Fact -> Table -> [Table]
-extractDimensions' tables prefix fact Table {..} = dimsFromIds ++ dimsFromVals
+extractDimensions' :: Fact -> Table -> Reader Env [Table]
+extractDimensions' fact Table {..} = do
+  tables <- asks envTables
+  prefix <- settingDimPrefix <$> asks envSettings
+  return $ dimsFromIds tables ++ dimsFromVals prefix
   where
-    dimsFromIds =
+    dimsFromIds tables =
       flip mapMaybe (factColumns fact) $ \fcol -> case fcol of
         DimId d _ -> findTable d tables
         _         -> Nothing
 
-    dimsFromVals =
+    dimsFromVals prefix =
       map (\(dim, cols) -> Table { tableName        = prefix <> dim
                                  , tableColumns     = Column "id" "serial" NotNull : cols
                                  , tableConstraints = [ PrimaryKey "id"
@@ -92,28 +99,33 @@ extractDimensions' tables prefix fact Table {..} = dimsFromIds ++ dimsFromVals
     cleanColumn dim col@Column {..} =
       col { columnName = fromMaybe columnName . Text.stripPrefix (dim <> "_") $ columnName }
 
-extractDimensions :: [Table] -> [Fact] -> Text -> Fact -> Either [ValidationError] [Table]
-extractDimensions tables facts prefix fact =
-  withFactValidation tables facts fact $ extractDimensions' tables prefix fact
+extractDimensions :: Fact -> Reader Env (Either [ValidationError] [Table])
+extractDimensions fact = withFactValidation fact $ extractDimensions' fact
 
-extractAllDimensions' :: [Table] -> [Fact] -> Text -> Fact -> Table -> [Table]
-extractAllDimensions' tables facts dimPrefix fact table =
-  nub $ extractDimensions' tables dimPrefix fact table ++ concatMap extract (factParentNames fact)
+extractAllDimensions' :: Fact -> Table -> Reader Env [Table]
+extractAllDimensions' fact table = do
+  myDims     <- extractDimensions' fact table
+  parentDims <- concat <$> mapM extract (factParentNames fact)
+  return . nub $ myDims ++ parentDims
   where
-    extract fName =
+    extract fName = do
+      tables <- asks envTables
+      facts  <- asks envFacts
       let pFact      = fromJust . findFact fName $ facts
           pFactTable = fromJust . findTable (factTableName pFact) $ tables
-      in extractAllDimensions' tables facts dimPrefix pFact pFactTable
+      extractAllDimensions' pFact pFactTable
 
-extractFactTable :: [Table] -> [Fact] -> Settings -> Fact -> Either [ValidationError] Table
-extractFactTable tables facts Settings {..} fact  =
-  withFactValidation tables facts fact $ \table ->
+extractFactTable ::  Fact -> Reader Env (Either [ValidationError] Table)
+extractFactTable fact  =
+  withFactValidation fact $ \table -> do
+    Settings {..} <- asks envSettings
+    allDims       <- extractAllDimensions' fact table
+
     let intType                  = "integer"
-        allDims                  = extractAllDimensions' tables facts settingDimPrefix fact table
         sourceColumnType colName = columnType . fromJust . findColumn colName . tableColumns $ table
 
         columns = flip concatMap (factColumns fact) $ \col -> case col of
-          DimTime cName            -> [ Column (timeUnitColName cName) intType NotNull ]
+          DimTime cName            -> [ Column (timeUnitColName cName settingTimeUnit) intType NotNull ]
           NoDimId cName            -> [ fromJust . findColumn cName . tableColumns $ table]
           FactCount cName          -> [ Column cName intType NotNull ]
           FactSum scName cName     -> [ Column cName (sourceColumnType scName) NotNull ]
@@ -131,13 +143,13 @@ extractFactTable tables facts Settings {..} fact  =
         ukColNames =
           (++ map (columnName . fst) fks)
           . flip mapMaybe (factColumns fact) $ \col -> case col of
-              DimTime cName -> Just (timeUnitColName cName)
+              DimTime cName -> Just (timeUnitColName cName settingTimeUnit)
               NoDimId cName -> Just cName
               _             -> Nothing
 
-    in Table { tableName        = settingFactPrefix <> factName fact
-             , tableColumns     = columns ++ map fst fks
-             , tableConstraints = UniqueKey ukColNames : map snd fks
-             }
+    return Table { tableName        = settingFactPrefix <> factName fact
+                 , tableColumns     = columns ++ map fst fks
+                 , tableConstraints = UniqueKey ukColNames : map snd fks
+                 }
   where
-    timeUnitColName colName = colName <> "_" <> timeUnitName settingTimeUnit <> "_id"
+    timeUnitColName colName timeUnit = colName <> "_" <> timeUnitName timeUnit <> "_id"

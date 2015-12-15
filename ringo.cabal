@@ -19,6 +19,7 @@ library
   build-depends:       base >= 4.7 && < 5
                      , text
                      , containers
+                     , mtl
   default-extensions:  OverloadedStrings, RecordWildCards, ScopedTypeVariables,
                        BangPatterns, TupleSections, NamedFieldPuns, GeneralizedNewtypeDeriving,
                        DeriveDataTypeable
