@@ -5,29 +5,14 @@ module Ringo.Extractor
        , extractFactTable
        ) where
 
-import qualified Data.Map  as Map
 import qualified Data.Text as Text
 
 import Control.Monad.Reader (Reader, asks)
 import Data.Maybe           (mapMaybe, fromMaybe, fromJust)
 import Data.Monoid          ((<>))
-import Data.List            (nub, find)
 
+import Ringo.Extractor.Internal
 import Ringo.Types
-
-findTable :: TableName -> [Table] -> Maybe Table
-findTable tName = find ((== tName) . tableName)
-
-findFact :: TableName -> [Fact] -> Maybe Fact
-findFact fName = find ((== fName) . factName)
-
-findColumn :: ColumnName -> [Column] -> Maybe Column
-findColumn cName = find ((== cName) . columnName)
-
-checkTableForCol :: Table -> ColumnName -> [ValidationError]
-checkTableForCol tab colName =
-  [ MissingColumn (tableName tab) colName |
-      not . any ((colName ==) . columnName) . tableColumns $ tab ]
 
 validateTable :: Table -> Reader ExtractorEnv [ValidationError]
 validateTable table = do
@@ -72,53 +57,8 @@ withFactValidation fact func = do
     then return $ Left errors
     else fmap Right . func . fromJust . findTable (factTableName fact) $ tables
 
-extractDimensions' :: Fact -> Table -> Reader ExtractorEnv [Table]
-extractDimensions' fact Table {..} = do
-  tables <- asks eeTables
-  prefix <- settingDimPrefix <$> asks eeSettings
-  return $ dimsFromIds tables ++ dimsFromVals prefix
-  where
-    dimsFromIds tables =
-      flip mapMaybe (factColumns fact) $ \fcol -> case fcol of
-        DimId d _ -> findTable d tables
-        _         -> Nothing
-
-    dimsFromVals prefix =
-      map (\(dim, cols) -> Table { tableName        = prefix <> dim
-                                 , tableColumns     = Column "id" "serial" NotNull : cols
-                                 , tableConstraints = [ PrimaryKey "id"
-                                                      , UniqueKey (map columnName cols)
-                                                      ]
-                                 })
-      . Map.toList
-      . Map.mapWithKey (\dim -> map (cleanColumn dim) . nub)
-      . Map.fromListWith (flip (++))
-      . mapMaybe (\fcol -> do
-                    DimVal d col <- fcol
-                    column       <- findColumn col tableColumns
-                    return (d, [ column ]))
-      . map Just
-      . factColumns
-      $ fact
-
-    cleanColumn dim col@Column {..} =
-      col { columnName = fromMaybe columnName . Text.stripPrefix (dim <> "_") $ columnName }
-
 extractDimensions :: Fact -> Reader ExtractorEnv (Either [ValidationError] [Table])
 extractDimensions fact = withFactValidation fact $ extractDimensions' fact
-
-extractAllDimensions' :: Fact -> Table -> Reader ExtractorEnv [Table]
-extractAllDimensions' fact table = do
-  myDims     <- extractDimensions' fact table
-  parentDims <- concat <$> mapM extract (factParentNames fact)
-  return . nub $ myDims ++ parentDims
-  where
-    extract fName = do
-      tables <- asks eeTables
-      facts  <- asks eeFacts
-      let pFact      = fromJust . findFact fName $ facts
-          pFactTable = fromJust . findTable (factTableName pFact) $ tables
-      extractAllDimensions' pFact pFactTable
 
 extractFactTable ::  Fact -> Reader ExtractorEnv (Either [ValidationError] Table)
 extractFactTable fact  =
