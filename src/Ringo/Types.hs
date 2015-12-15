@@ -79,8 +79,8 @@ data ValidationError = MissingTable TableName
                      | MissingColumn TableName ColumnName
                      deriving (Eq, Show)
 
-data ExtractorEnv = ExtractorEnv
-                    { eeTables   :: [Table]
-                    , eeFacts    :: [Fact]
-                    , eeSettings :: Settings
-                    } deriving (Eq, Show)
+data Env = Env
+           { envTables   :: [Table]
+           , envFacts    :: [Fact]
+           , envSettings :: Settings
+           } deriving (Eq, Show)

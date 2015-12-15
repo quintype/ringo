@@ -48,7 +48,7 @@ dimensionTableInsertSQL dimPrefix fact dimTableName = let
     DimVal dName cName | dimPrefix <> dName == dimTableName -> Just (dimColumnName dName cName, cName)
     _ -> Nothing
   in "INSERT INTO " <> dimTableName <> " (\n"
-        <> colNamesString (map fst colMapping)
-        <> "\n) SELECT DISTINCT \n"
-        <> colNamesString (map snd colMapping)
-        <> "\nFROM " <> factTableName fact
+       <> colNamesString (map fst colMapping)
+       <> "\n) SELECT DISTINCT \n"
+       <> colNamesString (map snd colMapping)
+       <> "\nFROM " <> factTableName fact

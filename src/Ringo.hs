@@ -1,4 +1,8 @@
-module Ringo where
+module Ringo
+       ( module Ringo.Types
+       , module Ringo.Extractor
+       , module Ringo.Generator
+       ) where
 
 import Ringo.Types
 import Ringo.Extractor
