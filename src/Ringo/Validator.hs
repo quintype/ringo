@@ -1,8 +1,10 @@
-module Ringo.Validator where
+module Ringo.Validator
+       ( validateTable
+       , validateFact
+       , withFactValidation
+       ) where
 
 import Control.Monad.Reader (Reader, asks)
-import Data.Maybe           (mapMaybe, fromMaybe, fromJust)
-import Data.Monoid          ((<>))
 
 import Ringo.Types
 import Ringo.Utils
@@ -46,11 +48,9 @@ validateFact Fact {..} = do
 
     checkColumn table = maybe [] (checkTableForCol table) . factColumnName
 
-withFactValidation :: Fact -> (Table -> Reader Env a)
-                   -> Reader Env (Either [ValidationError] a)
+withFactValidation :: Fact -> Reader Env a -> Reader Env (Either [ValidationError] a)
 withFactValidation fact func = do
-  tables <- asks envTables
   errors <- validateFact fact
   if not $ null errors
     then return $ Left errors
-    else fmap Right . func . fromJust . findTable (factTableName fact) $ tables
+    else fmap Right func

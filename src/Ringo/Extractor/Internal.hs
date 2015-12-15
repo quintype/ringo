@@ -11,18 +11,23 @@ import Data.List            (nub)
 import Ringo.Types
 import Ringo.Utils
 
-extractDimensions :: Fact -> Table -> Reader Env [Table]
-extractDimensions fact Table {..} = do
-  tables <- asks envTables
-  prefix <- settingDimPrefix <$> asks envSettings
-  return $ dimsFromIds tables ++ dimsFromVals prefix
+dimColumnName :: Text.Text -> ColumnName -> ColumnName
+dimColumnName dimName columnName =
+  fromMaybe columnName . Text.stripPrefix (dimName <> "_") $ columnName
+
+extractDimensionTables :: Fact -> Reader Env [Table]
+extractDimensionTables fact = do
+  tables    <- asks envTables
+  prefix    <- settingDimPrefix <$> asks envSettings
+  let table = fromJust . findTable (factTableName fact) $ tables
+  return $ dimsFromIds tables ++ dimsFromVals prefix (tableColumns table)
   where
     dimsFromIds tables =
       flip mapMaybe (factColumns fact) $ \fcol -> case fcol of
         DimId d _ -> findTable d tables
         _         -> Nothing
 
-    dimsFromVals prefix =
+    dimsFromVals prefix tableColumns =
       map (\(dim, cols) -> Table { tableName        = prefix <> dim
                                  , tableColumns     = Column "id" "serial" NotNull : cols
                                  , tableConstraints = [ PrimaryKey "id"
@@ -42,19 +47,12 @@ extractDimensions fact Table {..} = do
       . factColumns
       $ fact
 
-dimColumnName :: Text.Text -> ColumnName -> ColumnName
-dimColumnName dimName columnName =
-  fromMaybe columnName . Text.stripPrefix (dimName <> "_") $ columnName
-
-extractAllDimensions :: Fact -> Table -> Reader Env [Table]
-extractAllDimensions fact table = do
-  myDims     <- extractDimensions fact table
+extractAllDimensionTables :: Fact -> Reader Env [Table]
+extractAllDimensionTables fact = do
+  myDims     <- extractDimensionTables fact
   parentDims <- concat <$> mapM extract (factParentNames fact)
   return . nub $ myDims ++ parentDims
   where
     extract fName = do
-      tables <- asks envTables
       facts  <- asks envFacts
-      let pFact      = fromJust . findFact fName $ facts
-          pFactTable = fromJust . findTable (factTableName pFact) $ tables
-      extractAllDimensions pFact pFactTable
+      extractAllDimensionTables . fromJust . findFact fName $ facts

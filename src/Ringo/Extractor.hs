@@ -1,5 +1,6 @@
 module Ringo.Extractor
-       ( extractDimensions
+       ( extractDimensionTables
+       , extractAllDimensionTables
        , extractFactTable
        ) where
 
@@ -13,10 +14,11 @@ import Ringo.Extractor.Internal
 import Ringo.Types
 import Ringo.Utils
 
-extractFactTable ::  Fact -> Table -> Reader Env Table
-extractFactTable fact table = do
+extractFactTable ::  Fact -> Reader Env Table
+extractFactTable fact = do
   Settings {..} <- asks envSettings
-  allDims       <- extractAllDimensions fact table
+  allDims       <- extractAllDimensionTables fact
+  table         <- asks $ fromJust . findTable (factTableName fact) . envTables
 
   let intType                  = "integer"
       sourceColumnType colName = columnType . fromJust . findColumn colName . tableColumns $ table

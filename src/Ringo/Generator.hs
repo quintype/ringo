@@ -5,10 +5,11 @@ module Ringo.Generator
 
 import qualified Data.Text as Text
 
-import Data.List   (intersperse)
-import Data.Maybe  (mapMaybe)
-import Data.Monoid ((<>))
-import Data.Text   (Text)
+import Control.Monad.Reader (Reader, asks)
+import Data.List            (intersperse)
+import Data.Maybe           (mapMaybe)
+import Data.Monoid          ((<>))
+import Data.Text            (Text)
 
 import Ringo.Extractor.Internal
 import Ringo.Types
@@ -42,13 +43,16 @@ tableDefnSQL Table {..} =
                  <> (Text.concat . intersperse ",\n" . map columnDefnSQL $ tableColumns)
                  <> "\n)"
 
-dimensionTableInsertSQL :: Text -> Fact -> TableName -> Text
-dimensionTableInsertSQL dimPrefix fact dimTableName = let
-  colMapping = flip mapMaybe (factColumns fact) $ \fCol -> case fCol of
-    DimVal dName cName | dimPrefix <> dName == dimTableName -> Just (dimColumnName dName cName, cName)
-    _ -> Nothing
-  in "INSERT INTO " <> dimTableName <> " (\n"
-       <> colNamesString (map fst colMapping)
-       <> "\n) SELECT DISTINCT \n"
-       <> colNamesString (map snd colMapping)
-       <> "\nFROM " <> factTableName fact
+dimensionTableInsertSQL :: Fact -> TableName -> Reader Env Text
+dimensionTableInsertSQL fact dimTableName = do
+  dimPrefix      <- settingDimPrefix <$> asks envSettings
+  let colMapping = flip mapMaybe (factColumns fact) $ \fCol -> case fCol of
+        DimVal dName cName | dimPrefix <> dName == dimTableName ->
+          Just (dimColumnName dName cName, cName)
+        _ -> Nothing
+
+  return $ "INSERT INTO " <> dimTableName <> " (\n"
+             <> colNamesString (map fst colMapping)
+             <> "\n) SELECT DISTINCT \n"
+             <> colNamesString (map snd colMapping)
+             <> "\nFROM " <> factTableName fact
