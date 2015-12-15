@@ -1,3 +1,4 @@
+src/Ringo/Tables.hs
 dist
 cabal-dev
 *.o
