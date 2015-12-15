@@ -15,15 +15,15 @@ data Column = Column
               , columnNullable :: !Nullable
               } deriving (Eq, Show)
 
-data TableContraint = PrimaryKey !ColumnName
-                    | UniqueKey  ![ColumnName]
-                    | ForeignKey !TableName ![(ColumnName, ColumnName)]
-                    deriving (Eq, Show)
+data TableConstraint = PrimaryKey !ColumnName
+                     | UniqueKey  ![ColumnName]
+                     | ForeignKey !TableName ![(ColumnName, ColumnName)]
+                     deriving (Eq, Show)
 
 data Table = Table
              { tableName        :: !TableName
              , tableColumns     :: ![Column]
-             , tableConstraints :: ![TableContraint]
+             , tableConstraints :: ![TableConstraint]
              } deriving (Eq, Show)
 
 data TimeUnit = Second | Minute | Hour | Day | Week | Month | Year
@@ -79,7 +79,8 @@ data ValidationError = MissingTable TableName
                      | MissingColumn TableName ColumnName
                      deriving (Eq, Show)
 
-data Env = Env { envTables   :: [Table]
-               , envFacts    :: [Fact]
-               , envSettings :: Settings
-               } deriving (Eq, Show)
+data ExtractorEnv = ExtractorEnv
+                    { eeTables   :: [Table]
+                    , eeFacts    :: [Fact]
+                    , eeSettings :: Settings
+                    } deriving (Eq, Show)
