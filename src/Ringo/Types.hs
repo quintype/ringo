@@ -26,11 +26,18 @@ data Table = Table
              , tableConstraints :: ![TableConstraint]
              } deriving (Eq, Show)
 
-data TimeUnit = Second | Minute | Hour | Day | Week | Month | Year
+data TimeUnit = Second | Minute | Hour | Day | Week
                 deriving (Eq, Enum, Show)
 
 timeUnitName :: TimeUnit -> Text
 timeUnitName = T.toLower . T.pack . show
+
+timeUnitToSeconds :: TimeUnit -> Int
+timeUnitToSeconds Second = 1
+timeUnitToSeconds Minute = 60 * timeUnitToSeconds Second
+timeUnitToSeconds Hour   = 60 * timeUnitToSeconds Minute
+timeUnitToSeconds Day    = 24 * timeUnitToSeconds Hour
+timeUnitToSeconds Week   = 7  * timeUnitToSeconds Day
 
 data Fact = Fact
             { factName        :: !TableName

@@ -4,9 +4,10 @@ import qualified Data.Map  as Map
 import qualified Data.Text as Text
 
 import Control.Monad.Reader (Reader, asks)
+import Data.Function        (on)
 import Data.Maybe           (mapMaybe, fromMaybe, fromJust)
 import Data.Monoid          ((<>))
-import Data.List            (nub)
+import Data.List            (nub, nubBy)
 
 import Ringo.Types
 import Ringo.Utils
@@ -14,6 +15,26 @@ import Ringo.Utils
 dimColumnName :: Text.Text -> ColumnName -> ColumnName
 dimColumnName dimName columnName =
   fromMaybe columnName . Text.stripPrefix (dimName <> "_") $ columnName
+
+timeUnitColumnName :: ColumnName -> TimeUnit -> ColumnName
+timeUnitColumnName colName timeUnit = colName <> "_" <> timeUnitName timeUnit <> "_id"
+
+averageCountColummName :: ColumnName -> ColumnName
+averageCountColummName colName = colName <> "_count"
+
+averageSumColumnName :: ColumnName -> ColumnName
+averageSumColumnName colName  = colName <> "_sum"
+
+countDistinctColumnName :: ColumnName -> ColumnName
+countDistinctColumnName colName = colName <> "_hll"
+
+factDimFKIdColumnName :: Text.Text -> TableName -> ColumnName
+factDimFKIdColumnName dimPrefix dimTableName =
+  fromMaybe dimTableName (Text.stripPrefix dimPrefix dimTableName) <> "_id"
+
+extractedFactTableName :: Text.Text -> TableName -> TimeUnit -> TableName
+extractedFactTableName factPrefix factName timeUnit =
+  factPrefix <> factName <> "_by_" <> timeUnitName timeUnit
 
 extractDimensionTables :: Fact -> Reader Env [Table]
 extractDimensionTables fact = do
@@ -47,12 +68,12 @@ extractDimensionTables fact = do
       . factColumns
       $ fact
 
-extractAllDimensionTables :: Fact -> Reader Env [Table]
+extractAllDimensionTables :: Fact -> Reader Env [(Fact, Table)]
 extractAllDimensionTables fact = do
-  myDims     <- extractDimensionTables fact
+  myDims     <- map (fact,) <$> extractDimensionTables fact
   parentDims <- concat <$> mapM extract (factParentNames fact)
-  return . nub $ myDims ++ parentDims
+  return . nubBy ((==) `on` snd) $ myDims ++ parentDims
   where
     extract fName = do
-      facts  <- asks envFacts
+      facts <- asks envFacts
       extractAllDimensionTables . fromJust . findFact fName $ facts
