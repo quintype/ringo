@@ -34,6 +34,34 @@ settingsParser = let Settings {..} = defSettings
                          <> completeWith timeunits
                          <> help ("Time unit granularity for fact tables. Possible values: "
                                     ++ intercalate ", " timeunits))
+     <*> minorOption "avg-count-col-suffix"
+                     settingAvgCountColumSuffix
+                     "Suffix for average count columns"
+     <*> minorOption "avg-sum-col-suffix"
+                     settingAvgSumColumnSuffix
+                     "Suffix for average sum columns"
+     <*> minorOption "count-distinct-col-suffix"
+                     settingCountDistinctColumSuffix
+                     "Suffix for count distinct bucket columns"
+     <*> minorOption "dim-id-col-name"
+                     settingDimTableIdColumnName
+                     "Name of dimention table id columns"
+     <*> minorOption "dim-id-col-type"
+                     settingDimTableIdColumnType
+                     "Type of dimention table id columns"
+     <*> minorOption "fact-count-col-type"
+                     settingFactCountColumnType
+                     "Type of fact table count columns"
+     <*> minorOption "fact-infix"
+                     settingFactInfix
+                     "Infix for fact tables"
+  where
+    minorOption longDesc defValue helpTxt =
+      Text.pack <$> strOption (long longDesc
+                               <> hidden
+                               <> value (Text.unpack defValue)
+                               <> showDefault
+                               <> help helpTxt)
 
 progArgsParser :: Parser ProgArgs
 progArgsParser =
@@ -47,10 +75,9 @@ progArgsParser =
                     <> help "Output directory")
 
 parseArgs :: IO ProgArgs
-parseArgs = execParser opts
-  where
-    opts = info (helper <*> progArgsParser)
-                (fullDesc
-                 <> progDesc "Transforms OLTP database schemas to OLAP database star schemas"
-                 <> header "ringo - OLTP to OLAP schema transformer"
-                 <> footer "Source: http://github.com/quintype/ringo")
+parseArgs = execParser $
+  info (helper <*> progArgsParser)
+       (fullDesc
+        <> progDesc "Transforms OLTP database schemas to OLAP database star schemas"
+        <> header "ringo - OLTP to OLAP schema transformer"
+        <> footer "Source: http://github.com/quintype/ringo")

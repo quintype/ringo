@@ -18,33 +18,39 @@ extractFactTable fact = do
   allDims       <- extractAllDimensionTables fact
   table         <- asks $ fromJust . findTable (factTableName fact) . envTables
 
-  let intType                  = "integer"
+  let countColType             = settingFactCountColumnType
+      dimIdColName             = settingDimTableIdColumnName
       sourceColumnType colName = columnType . fromJust . findColumn colName . tableColumns $ table
 
       columns = flip concatMap (factColumns fact) $ \col -> case col of
-        DimTime cName            -> [ Column (timeUnitColumnName cName settingTimeUnit) intType NotNull ]
+        DimTime cName            -> [ Column (timeUnitColumnName dimIdColName cName settingTimeUnit) "integer" NotNull ]
         NoDimId cName            -> [ fromJust . findColumn cName . tableColumns $ table]
-        FactCount cName          -> [ Column cName intType NotNull ]
+        FactCount cName          -> [ Column cName countColType NotNull ]
         FactSum scName cName     -> [ Column cName (sourceColumnType scName) NotNull ]
-        FactAverage scName cName -> [ Column (averageCountColummName cName) intType NotNull
-                                    , Column (averageSumColumnName cName) (sourceColumnType scName) NotNull
-                                    ]
-        FactCountDistinct cName  -> [ Column (countDistinctColumnName cName) (intType <> "[]") NotNull ]
+        FactAverage scName cName ->
+          [ Column (cName <> settingAvgCountColumSuffix) countColType NotNull
+          , Column (cName <> settingAvgSumColumnSuffix) (sourceColumnType scName) NotNull
+          ]
+        FactCountDistinct cName  ->
+          [ Column (cName <> settingCountDistinctColumSuffix) (countColType <> "[]") NotNull ]
         _                        -> []
 
       fks = flip map allDims $ \(_, Table {..}) ->
-        let colName     = factDimFKIdColumnName settingDimPrefix tableName
+        let colName     = factDimFKIdColumnName settingDimPrefix dimIdColName tableName
             colNullable = if any ((== Null) . columnNullable) tableColumns then Null else NotNull
-        in (Column colName intType colNullable, ForeignKey tableName [(colName, "id")])
+        in ( Column colName (idColTypeToFKIdColType settingDimTableIdColumnType) colNullable
+           , ForeignKey tableName [(colName, dimIdColName)]
+           )
 
       ukColNames =
         (++ map (columnName . fst) fks)
         . flip mapMaybe (factColumns fact) $ \col -> case col of
-            DimTime cName -> Just (timeUnitColumnName cName settingTimeUnit)
+            DimTime cName -> Just (timeUnitColumnName dimIdColName cName settingTimeUnit)
             NoDimId cName -> Just cName
             _             -> Nothing
 
-  return Table { tableName        = extractedFactTableName settingFactPrefix (factName fact) settingTimeUnit
+  return Table { tableName        =
+                   extractedFactTableName settingFactPrefix settingFactInfix (factName fact) settingTimeUnit
                , tableColumns     = columns ++ map fst fks
                , tableConstraints = UniqueKey ukColNames : map snd fks
                }

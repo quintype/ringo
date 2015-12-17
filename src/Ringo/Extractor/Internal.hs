@@ -8,53 +8,55 @@ import Data.Function        (on)
 import Data.Maybe           (mapMaybe, fromMaybe, fromJust)
 import Data.Monoid          ((<>))
 import Data.List            (nub, nubBy)
+import Data.Text            (Text)
 
 import Ringo.Types
 import Ringo.Utils
 
-dimColumnName :: Text.Text -> ColumnName -> ColumnName
+dimColumnName :: Text -> ColumnName -> ColumnName
 dimColumnName dimName columnName =
   fromMaybe columnName . Text.stripPrefix (dimName <> "_") $ columnName
 
-timeUnitColumnName :: ColumnName -> TimeUnit -> ColumnName
-timeUnitColumnName colName timeUnit = colName <> "_" <> timeUnitName timeUnit <> "_id"
+timeUnitColumnName :: Text -> ColumnName -> TimeUnit -> ColumnName
+timeUnitColumnName dimIdColName colName timeUnit =
+  colName <> "_" <> timeUnitName timeUnit <> "_" <> dimIdColName
 
-averageCountColummName :: ColumnName -> ColumnName
-averageCountColummName colName = colName <> "_count"
+factDimFKIdColumnName :: Text -> Text -> TableName -> ColumnName
+factDimFKIdColumnName dimPrefix dimIdColName dimTableName =
+  fromMaybe dimTableName (Text.stripPrefix dimPrefix dimTableName) <> "_" <> dimIdColName
 
-averageSumColumnName :: ColumnName -> ColumnName
-averageSumColumnName colName  = colName <> "_sum"
+extractedFactTableName :: Text -> Text -> TableName -> TimeUnit -> TableName
+extractedFactTableName factPrefix factInfix factName timeUnit =
+  factPrefix <> factName <> factInfix <> timeUnitName timeUnit
 
-countDistinctColumnName :: ColumnName -> ColumnName
-countDistinctColumnName colName = colName <> "_hll"
-
-factDimFKIdColumnName :: Text.Text -> TableName -> ColumnName
-factDimFKIdColumnName dimPrefix dimTableName =
-  fromMaybe dimTableName (Text.stripPrefix dimPrefix dimTableName) <> "_id"
-
-extractedFactTableName :: Text.Text -> TableName -> TimeUnit -> TableName
-extractedFactTableName factPrefix factName timeUnit =
-  factPrefix <> factName <> "_by_" <> timeUnitName timeUnit
+idColTypeToFKIdColType :: Text -> Text
+idColTypeToFKIdColType typ = case Text.toLower typ of
+  "serial"      -> "integer"
+  "smallserial" -> "smallint"
+  "bigserial"   -> "bigint"
+  _             -> typ
 
 extractDimensionTables :: Fact -> Reader Env [Table]
 extractDimensionTables fact = do
+  settings  <- asks envSettings
   tables    <- asks envTables
-  prefix    <- settingDimPrefix <$> asks envSettings
   let table = fromJust . findTable (factTableName fact) $ tables
-  return $ dimsFromIds tables ++ dimsFromVals prefix (tableColumns table)
+  return $ dimsFromIds tables ++ dimsFromVals settings (tableColumns table)
   where
     dimsFromIds tables =
       flip mapMaybe (factColumns fact) $ \fcol -> case fcol of
         DimId d _ -> findTable d tables
         _         -> Nothing
 
-    dimsFromVals prefix tableColumns =
-      map (\(dim, cols) -> Table { tableName        = prefix <> dim
-                                 , tableColumns     = Column "id" "serial" NotNull : cols
-                                 , tableConstraints = [ PrimaryKey "id"
-                                                      , UniqueKey (map columnName cols)
-                                                      ]
-                                 })
+    dimsFromVals Settings {..} tableColumns =
+      map (\(dim, cols) ->
+            Table { tableName        = settingDimPrefix <> dim
+                  , tableColumns     =
+                      Column settingDimTableIdColumnName settingDimTableIdColumnType NotNull : cols
+                  , tableConstraints = [ PrimaryKey settingDimTableIdColumnName
+                                       , UniqueKey (map columnName cols)
+                                       ]
+                  })
       . Map.toList
       . Map.mapWithKey (\dim ->
                           map (\col@Column {..} -> col { columnName = dimColumnName dim columnName })

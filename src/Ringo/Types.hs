@@ -5,7 +5,7 @@ import qualified Data.Text as Text
 
 type ColumnName = Text
 type ColumnType = Text
-type TableName = Text
+type TableName  = Text
 
 data Nullable = Null | NotNull deriving (Eq, Enum, Show)
 
@@ -67,25 +67,39 @@ factColumnName (FactAverage cName _) = Just cName
 factColumnName (FactCountDistinct _) = Nothing
 
 data Settings = Settings
-                { settingDimPrefix  :: !Text
-                , settingFactPrefix :: !Text
-                , settingTimeUnit   :: !TimeUnit
+                { settingDimPrefix                :: !Text
+                , settingFactPrefix               :: !Text
+                , settingTimeUnit                 :: !TimeUnit
+                , settingAvgCountColumSuffix      :: !Text
+                , settingAvgSumColumnSuffix       :: !Text
+                , settingCountDistinctColumSuffix :: !Text
+                , settingDimTableIdColumnName     :: !Text
+                , settingDimTableIdColumnType     :: !Text
+                , settingFactCountColumnType      :: !Text
+                , settingFactInfix                :: !Text
                 } deriving (Eq, Show)
 
 defSettings :: Settings
 defSettings = Settings
-              { settingDimPrefix  = "dim_"
-              , settingFactPrefix = "fact_"
-              , settingTimeUnit   = Minute
+              { settingDimPrefix                = "dim_"
+              , settingFactPrefix               = "fact_"
+              , settingTimeUnit                 = Minute
+              , settingAvgCountColumSuffix      = "_count"
+              , settingAvgSumColumnSuffix       = "_sum"
+              , settingCountDistinctColumSuffix = "_hll"
+              , settingDimTableIdColumnName     = "id"
+              , settingDimTableIdColumnType     = "serial"
+              , settingFactCountColumnType      = "integer"
+              , settingFactInfix                = "_by_"
               }
 
-data ValidationError = MissingTable TableName
-                     | MissingFact TableName
-                     | MissingColumn TableName ColumnName
+data ValidationError = MissingTable  !TableName
+                     | MissingFact   !TableName
+                     | MissingColumn !TableName !ColumnName
                      deriving (Eq, Show)
 
 data Env = Env
-           { envTables   :: [Table]
-           , envFacts    :: [Fact]
-           , envSettings :: Settings
+           { envTables   :: ![Table]
+           , envFacts    :: ![Fact]
+           , envSettings :: !Settings
            } deriving (Eq, Show)

@@ -39,28 +39,28 @@ writeSQLFiles outputDir env@Env{..} = forM_ sqls $ \(sqlType, table, sql) -> do
     dimTables  = map (\fact -> (fact, extractDimensionTables env fact)) envFacts
     factTables = map (\fact -> (fact, extractFactTable env fact)) envFacts
 
-    dimTableDefnSQLs   = [ (Create, tableName table, unlines . map sqlStr . tableDefnSQL $ table)
-                           | (_, tabs)  <- dimTables
-                           , table      <- tabs
-                           , table `notElem` envTables ]
-    factTableDefnSQLs  = [ (Create
-                           , tableName table, unlines . map sqlStr $ factTableDefnSQL env fact table)
-                           | (fact, table) <- factTables ]
+    dimTableDefnSQLs    = [ (Create, tableName table, unlines . map sqlStr . tableDefnSQL $ table)
+                            | (_, tabs)  <- dimTables
+                            , table      <- tabs
+                            , table `notElem` envTables ]
+    factTableDefnSQLs   = [ (Create
+                            , tableName table, unlines . map sqlStr $ factTableDefnSQL env fact table)
+                            | (fact, table) <- factTables ]
 
-    dimTableInsertSQLs = [ (Populate
-                           , tableName table
-                           , sqlStr $ dimensionTableInsertSQL env fact (tableName table))
-                           | (fact, tabs) <- dimTables
-                           , table        <- tabs
-                           , table `notElem` envTables ]
+    dimTableInsertSQLs  = [ (Populate
+                            , tableName table
+                            , sqlStr $ dimensionTableInsertSQL env fact (tableName table))
+                            | (fact, tabs) <- dimTables
+                            , table        <- tabs
+                            , table `notElem` envTables ]
 
-    fctTableInsertSQLs = [ (Populate, tableName table, sqlStr $ factTableInsertSQL env fact)
-                           | (fact, table) <- factTables ]
+    factTableInsertSQLs = [ (Populate, tableName table, sqlStr $ factTableInsertSQL env fact)
+                            | (fact, table) <- factTables ]
 
     sqls = concat [ dimTableDefnSQLs
                   , factTableDefnSQLs
                   , dimTableInsertSQLs
-                  , fctTableInsertSQLs
+                  , factTableInsertSQLs
                   ]
 
-    sqlStr s   = Text.unpack $ s <> ";\n"
+    sqlStr s = Text.unpack $ s <> ";\n"

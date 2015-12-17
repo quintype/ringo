@@ -52,12 +52,12 @@ factTableDefnSQL fact table = do
   allDims       <- extractAllDimensionTables fact
 
   let factCols  = flip mapMaybe (factColumns fact) $ \col -> case col of
-        DimTime cName -> Just $ timeUnitColumnName cName settingTimeUnit
+        DimTime cName -> Just $ timeUnitColumnName settingDimTableIdColumnName cName settingTimeUnit
         NoDimId cName -> Just cName
         _             -> Nothing
 
       dimCols   = flip map allDims $ \(_, Table {..}) ->
-        factDimFKIdColumnName settingDimPrefix tableName
+        factDimFKIdColumnName settingDimPrefix settingDimTableIdColumnName tableName
 
       indexSQLs = flip map (factCols ++ dimCols) $ \col ->
         "CREATE INDEX ON " <> tableName table <> " USING btree (" <> col <> ")"
@@ -83,14 +83,15 @@ dimensionTableInsertSQL fact dimTableName = do
 
 factTableInsertSQL :: Fact -> Reader Env Text
 factTableInsertSQL fact = do
-  let fTableName = factTableName fact
-  Settings {..} <- asks envSettings
-  allDims       <- extractAllDimensionTables fact
-  tables        <- asks envTables
-  let table     =  fromJust . findTable fTableName $ tables
+  let fTableName   = factTableName fact
+  Settings {..}    <- asks envSettings
+  allDims          <- extractAllDimensionTables fact
+  tables           <- asks envTables
+  let table        =  fromJust . findTable fTableName $ tables
+      dimIdColName = settingDimTableIdColumnName
 
   let timeUnitColumnInsertSQL cName =
-        let colName = timeUnitColumnName cName settingTimeUnit
+        let colName = timeUnitColumnName dimIdColName cName settingTimeUnit
         in (colName, "floor(extract(epoch from " <> fullColName fTableName cName <> ")/"
                         <> Text.pack (show $ timeUnitToSeconds settingTimeUnit) <> ")")
 
@@ -99,14 +100,14 @@ factTableInsertSQL fact = do
         NoDimId cName            -> [ (cName, fullColName fTableName cName) ]
         FactCount cName          -> [ (cName, "count(*)") ]
         FactSum scName cName     -> [ (cName, "sum(" <> fullColName fTableName scName <> ")") ]
-        FactAverage scName cName -> [ ( averageCountColummName cName
+        FactAverage scName cName -> [ ( cName <> settingAvgCountColumSuffix
                                       , "count(" <> fullColName fTableName scName <> ")")
-                                    , ( averageSumColumnName cName
+                                    , ( cName <> settingAvgSumColumnSuffix
                                       , "sum(" <> fullColName fTableName scName <> ")") ]
         _                        -> []
 
       dimColMap = flip map allDims $ \(dimFact, factTable@Table {..}) ->
-        let colName             = factDimFKIdColumnName settingDimPrefix tableName
+        let colName             = factDimFKIdColumnName settingDimPrefix dimIdColName tableName
             factSourceTableName = factTableName dimFact
             insertSQL           =
               if factTable `elem` tables
@@ -116,7 +117,7 @@ factTableInsertSQL fact = do
                       map (\(c1, c2) ->
                             fullColName tableName c1 <> " = " <> fullColName factSourceTableName c2)
                       $ dimColumnMapping settingDimPrefix dimFact tableName
-                in "SELECT id FROM " <> tableName <> "\nWHERE "
+                in "SELECT " <> dimIdColName <> " FROM " <> tableName <> "\nWHERE "
                      <> (Text.concat . intersperse "\n AND " $ dimLookupWhereClauses)
         in (colName, insertSQL)
 
@@ -128,7 +129,8 @@ factTableInsertSQL fact = do
         . map (\(dimFact, _) -> factTableName dimFact)
         $ allDims
 
-  return $ "INSERT INTO " <> extractedFactTableName settingFactPrefix (factName fact) settingTimeUnit
+  return $ "INSERT INTO "
+             <> extractedFactTableName settingFactPrefix settingFactInfix (factName fact) settingTimeUnit
              <> " (\n" <> Text.concat (intersperse ",\n " . map fst $ colMap) <> "\n)"
              <> "\nSELECT \n" <> Text.concat (intersperse ",\n " . map snd $ colMap)
              <> "\nFROM " <> fTableName <> "\n" <> Text.concat (intersperse "\n" joinClauses)
