@@ -3,6 +3,7 @@ module Ringo
        , extractFactTable
        , extractDimensionTables
        , G.tableDefnSQL
+       , factTableDefnSQL
        , dimensionTableInsertSQL
        , factTableInsertSQL
        , validateTable
@@ -22,6 +23,9 @@ extractFactTable env = flip runReader env . E.extractFactTable
 
 extractDimensionTables :: Env -> Fact -> [Table]
 extractDimensionTables env = flip runReader env . E.extractDimensionTables
+
+factTableDefnSQL :: Env -> Fact -> Table -> [Text]
+factTableDefnSQL env fact = flip runReader env . G.factTableDefnSQL fact
 
 dimensionTableInsertSQL :: Env -> Fact -> TableName -> Text
 dimensionTableInsertSQL env fact = flip runReader env . G.dimensionTableInsertSQL fact

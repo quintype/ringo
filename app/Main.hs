@@ -39,12 +39,13 @@ writeSQLFiles outputDir env@Env{..} = forM_ sqls $ \(sqlType, table, sql) -> do
     dimTables  = map (\fact -> (fact, extractDimensionTables env fact)) envFacts
     factTables = map (\fact -> (fact, extractFactTable env fact)) envFacts
 
-    dimTableDefnSQLs   = [ (Create, tableName table, tabDefnSQL table)
+    dimTableDefnSQLs   = [ (Create, tableName table, unlines . map sqlStr . tableDefnSQL $ table)
                            | (_, tabs)  <- dimTables
                            , table      <- tabs
                            , table `notElem` envTables ]
-    factTableDefnSQLs  = [ (Create, tableName table, tabDefnSQL table)
-                           | (_, table) <- factTables ]
+    factTableDefnSQLs  = [ (Create
+                           , tableName table, unlines . map sqlStr $ factTableDefnSQL env fact table)
+                           | (fact, table) <- factTables ]
 
     dimTableInsertSQLs = [ (Populate
                            , tableName table
@@ -63,4 +64,3 @@ writeSQLFiles outputDir env@Env{..} = forM_ sqls $ \(sqlType, table, sql) -> do
                   ]
 
     sqlStr s   = Text.unpack $ s <> ";\n"
-    tabDefnSQL = unlines . map sqlStr . tableDefnSQL

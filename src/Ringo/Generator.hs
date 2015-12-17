@@ -1,5 +1,6 @@
 module Ringo.Generator
        ( tableDefnSQL
+       , factTableDefnSQL
        , dimensionTableInsertSQL
        , factTableInsertSQL
        ) where
@@ -45,6 +46,23 @@ tableDefnSQL Table {..} =
                  <> (Text.concat . intersperse ",\n" . map columnDefnSQL $ tableColumns)
                  <> "\n)"
 
+factTableDefnSQL :: Fact -> Table -> Reader Env [Text]
+factTableDefnSQL fact table = do
+  Settings {..} <- asks envSettings
+  allDims       <- extractAllDimensionTables fact
+
+  let factCols  = flip mapMaybe (factColumns fact) $ \col -> case col of
+        DimTime cName -> Just $ timeUnitColumnName cName settingTimeUnit
+        NoDimId cName -> Just cName
+        _             -> Nothing
+
+      dimCols   = flip map allDims $ \(_, Table {..}) ->
+        factDimFKIdColumnName settingDimPrefix tableName
+
+      indexSQLs = flip map (factCols ++ dimCols) $ \col ->
+        "CREATE INDEX ON " <> tableName table <> " USING btree (" <> col <> ")"
+  return $ tableDefnSQL table ++ indexSQLs
+
 dimColumnMapping :: Text -> Fact -> TableName -> [(ColumnName, ColumnName)]
 dimColumnMapping dimPrefix fact dimTableName =
   flip mapMaybe (factColumns fact) $ \fCol -> case fCol of
@@ -64,7 +82,7 @@ dimensionTableInsertSQL fact dimTableName = do
              <> "\nFROM " <> factTableName fact
 
 factTableInsertSQL :: Fact -> Reader Env Text
-factTableInsertSQL fact= do
+factTableInsertSQL fact = do
   let fTableName = factTableName fact
   Settings {..} <- asks envSettings
   allDims       <- extractAllDimensionTables fact
