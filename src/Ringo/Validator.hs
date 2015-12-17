@@ -37,7 +37,7 @@ validateFact Fact {..} = do
     Just table -> do
       tableVs   <- validateTable table
       parentVs  <- concat <$> mapM checkFactParents factParentNames
-      let colVs = concatMap (checkColumn table) factColumns
+      let colVs = concatMap (checkColumn tables table) factColumns
       return $ tableVs ++ parentVs ++ colVs
   where
     checkFactParents fName = do
@@ -46,7 +46,17 @@ validateFact Fact {..} = do
         Nothing    -> return [ MissingFact fName ]
         Just pFact -> validateFact pFact
 
-    checkColumn table = maybe [] (checkTableForCol table) . factColumnName
+    checkColumn tables table factCol =
+      maybe [] (checkTableForCol table) (factColumnName factCol)
+        ++ checkColumnTable tables factCol
+
+    checkColumnTable tables factCol = case factCol of
+      DimId tName _  -> go tName
+      _              -> []
+      where
+        go tName = case findTable tName tables of
+          Nothing -> [ MissingTable tName ]
+          Just _  -> []
 
 withFactValidation :: Fact -> Reader Env a -> Reader Env (Either [ValidationError] a)
 withFactValidation fact func = do

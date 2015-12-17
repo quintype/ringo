@@ -1,6 +1,6 @@
 name:                ringo
 version:             0.1.0.0
-synopsis:            Tool to transform OLTP database schemas to OLAP database schemas automatically
+synopsis:            Tool to transform OLTP database schemas to OLAP database star schemas automatically
 description:         Please see README.md
 homepage:            http://github.com/quintype/ringo#readme
 license:             MIT
@@ -15,11 +15,19 @@ cabal-version:       >=1.20
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Ringo
-  build-depends:       base >= 4.7 && < 5
-                     , text
-                     , containers
-                     , mtl
+  exposed-modules:     Ringo,
+                       Ringo.Extractor,
+                       Ringo.Generator,
+                       Ringo.Validator,
+                       Ringo.Types
+  other-modules:       Ringo.Extractor.Internal,
+                       Ringo.Utils
+
+  build-depends:       base       >=4.7 && <5,
+                       text       >=1.2 && <1.3,
+                       containers >=0.5 && <0.6,
+                       mtl        >=2.2 && <2.3
+  ghc-options:         -Wall -fno-warn-unused-do-bind -funbox-strict-fields -fno-warn-orphans
   default-extensions:  OverloadedStrings, RecordWildCards, ScopedTypeVariables,
                        BangPatterns, TupleSections, NamedFieldPuns, GeneralizedNewtypeDeriving,
                        DeriveDataTypeable
@@ -27,11 +35,19 @@ library
 
 executable ringo
   hs-source-dirs:      app
+  other-modules:       Ringo.ArgParser,
+                       Ringo.InputParser
   main-is:             Main.hs
-  build-depends:       base
-                     , ringo
-                     , pretty-show
-  ghc-options:         -Wall -fno-warn-unused-do-bind -funbox-strict-fields -fno-warn-orphans
+  build-depends:       base                 >=4.7 && <5,
+                       text                 >=1.2 && <1.3,
+                       optparse-applicative >=0.11 && <0.12,
+                       yaml                 >=0.8 && <0.9,
+                       vector               >=0.10 && <0.11,
+                       ringo
+  ghc-options:         -Wall -fno-warn-unused-do-bind -funbox-strict-fields -fno-warn-orphans -O2
+  default-extensions:  OverloadedStrings, RecordWildCards, ScopedTypeVariables,
+                       BangPatterns, TupleSections, NamedFieldPuns, GeneralizedNewtypeDeriving,
+                       DeriveDataTypeable
   default-language:    Haskell2010
 
 test-suite ringo-test

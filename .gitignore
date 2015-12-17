@@ -1,6 +1,8 @@
-src/Ringo/Tables.hs
+Tables.hs
+tables.yaml
 dist
 cabal-dev
+.DS_STORE
 *.o
 *.hi
 *.chi

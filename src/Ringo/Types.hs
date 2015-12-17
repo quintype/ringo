@@ -1,7 +1,7 @@
 module Ringo.Types where
 
 import           Data.Text (Text)
-import qualified Data.Text as T
+import qualified Data.Text as Text
 
 type ColumnName = Text
 type ColumnType = Text
@@ -27,10 +27,10 @@ data Table = Table
              } deriving (Eq, Show)
 
 data TimeUnit = Second | Minute | Hour | Day | Week
-                deriving (Eq, Enum, Show)
+                deriving (Eq, Enum, Show, Read)
 
 timeUnitName :: TimeUnit -> Text
-timeUnitName = T.toLower . T.pack . show
+timeUnitName = Text.toLower . Text.pack . show
 
 timeUnitToSeconds :: TimeUnit -> Int
 timeUnitToSeconds Second = 1
@@ -45,8 +45,6 @@ data Fact = Fact
             , factParentNames :: ![TableName]
             , factColumns     :: ![FactColumn]
             } deriving (Eq, Show)
-
-data FactValType = Count | Sum | Average | CountDistinct deriving (Eq, Enum, Show)
 
 data FactColumn = DimTime           !ColumnName
                 | NoDimId           !ColumnName
