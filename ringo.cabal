@@ -11,24 +11,24 @@ copyright:           2015 Quintype Inc, Nilenso Software LLP
 category:            SQL
 build-type:          Simple
 -- extra-source-files:
-cabal-version:       >=1.20
+cabal-version:       >=1.18
 
 library
   hs-source-dirs:      src
   exposed-modules:     Ringo,
-                       Ringo.Extractor,
+                       Ringo.Types
+  other-modules:       Ringo.Extractor,
                        Ringo.Generator,
                        Ringo.Validator,
-                       Ringo.Types
-  other-modules:       Ringo.Extractor.Internal,
+                       Ringo.Extractor.Internal,
                        Ringo.Utils
   build-depends:       base       >=4.7 && <5,
                        text       >=1.2 && <1.3,
                        containers >=0.5 && <0.6,
-                       mtl        >=2.2 && <2.3
+                       mtl        >=2.1 && <2.3
   ghc-options:         -Wall -fno-warn-unused-do-bind -funbox-strict-fields -fno-warn-orphans -O2
   default-extensions:  OverloadedStrings, RecordWildCards, ScopedTypeVariables, BangPatterns,
-                       TupleSections
+                       TupleSections, CPP
   default-language:    Haskell2010
 
 executable ringo
@@ -42,11 +42,11 @@ executable ringo
                        yaml                 >=0.8  && <0.9,
                        vector               >=0.10 && <0.11,
                        directory            >=1.2  && <1.3,
-                       filepath             >=1.4  && <1.5,
+                       filepath             >=1.3  && <1.5,
                        ringo
   ghc-options:         -Wall -fno-warn-unused-do-bind -funbox-strict-fields -fno-warn-orphans -O2
   default-extensions:  OverloadedStrings, RecordWildCards, ScopedTypeVariables, BangPatterns,
-                       TupleSections
+                       TupleSections, CPP
   default-language:    Haskell2010
 
 test-suite ringo-test

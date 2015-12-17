@@ -7,6 +7,11 @@ module Ringo.Generator
 
 import qualified Data.Text as Text
 
+#if MIN_VERSION_base(4,8,0)
+#else
+import Control.Applicative  ((<$>))
+#endif
+
 import Control.Monad.Reader (Reader, asks)
 import Data.List            (intersperse, nub, find)
 import Data.Maybe           (fromJust, mapMaybe)

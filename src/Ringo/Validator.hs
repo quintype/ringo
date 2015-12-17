@@ -4,6 +4,11 @@ module Ringo.Validator
        , withFactValidation
        ) where
 
+#if MIN_VERSION_base(4,8,0)
+#else
+import Control.Applicative ((<$>))
+#endif
+
 import Control.Monad.Reader (Reader, asks)
 
 import Ringo.Types

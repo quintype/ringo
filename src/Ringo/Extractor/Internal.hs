@@ -3,6 +3,11 @@ module Ringo.Extractor.Internal where
 import qualified Data.Map  as Map
 import qualified Data.Text as Text
 
+#if MIN_VERSION_base(4,8,0)
+#else
+import Control.Applicative  ((<$>))
+#endif
+
 import Control.Monad.Reader (Reader, asks)
 import Data.Function        (on)
 import Data.Maybe           (mapMaybe, fromMaybe, fromJust)

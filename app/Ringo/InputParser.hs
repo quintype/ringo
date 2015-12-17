@@ -3,8 +3,13 @@ module Ringo.InputParser (parseInput) where
 import qualified Data.Text as Text
 import qualified Data.Vector as V
 
-import Data.Maybe        (fromMaybe)
-import Data.Vector       ((!), (!?))
+#if MIN_VERSION_base(4,8,0)
+#else
+import Control.Applicative ((<$>), (<*>), pure)
+#endif
+
+import Data.Maybe          (fromMaybe)
+import Data.Vector         ((!), (!?))
 import Data.Yaml hiding (Null)
 
 import Ringo.Types
