@@ -2,6 +2,7 @@ Tables.hs
 tables.yaml
 dist
 cabal-dev
+out
 .DS_STORE
 *.o
 *.hi
