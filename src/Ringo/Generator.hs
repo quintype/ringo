@@ -56,21 +56,22 @@ factTableDefnSQL fact table = do
   Settings {..} <- asks envSettings
   allDims       <- extractAllDimensionTables fact
 
-  let factCols  = flip mapMaybe (factColumns fact) $ \col -> case col of
+  let factCols  = forMaybe (factColumns fact) $ \col -> case col of
         DimTime cName -> Just $ timeUnitColumnName settingDimTableIdColumnName cName settingTimeUnit
         NoDimId cName -> Just cName
         _             -> Nothing
 
-      dimCols   = flip map allDims $ \(_, Table {..}) ->
-        factDimFKIdColumnName settingDimPrefix settingDimTableIdColumnName tableName
+      dimCols   = [ factDimFKIdColumnName settingDimPrefix settingDimTableIdColumnName tableName
+                    | (_, Table {..}) <- allDims ]
 
-      indexSQLs = flip map (factCols ++ dimCols) $ \col ->
-        "CREATE INDEX ON " <> tableName table <> " USING btree (" <> col <> ")"
+      indexSQLs = [ "CREATE INDEX ON " <> tableName table <> " USING btree (" <> col <> ")"
+                    | col <- factCols ++ dimCols ]
+
   return $ tableDefnSQL table ++ indexSQLs
 
 dimColumnMapping :: Text -> Fact -> TableName -> [(ColumnName, ColumnName)]
 dimColumnMapping dimPrefix fact dimTableName =
-  flip mapMaybe (factColumns fact) $ \fCol -> case fCol of
+  forMaybe (factColumns fact) $ \fCol -> case fCol of
     DimVal dName cName | dimPrefix <> dName == dimTableName ->
       Just (dimColumnName dName cName, cName)
     _ -> Nothing
@@ -88,19 +89,19 @@ dimensionTableInsertSQL fact dimTableName = do
 
 factTableInsertSQL :: Fact -> Reader Env Text
 factTableInsertSQL fact = do
-  let fTableName   = factTableName fact
   Settings {..}    <- asks envSettings
   allDims          <- extractAllDimensionTables fact
   tables           <- asks envTables
-  let table        =  fromJust . findTable fTableName $ tables
+  let fTableName   = factTableName fact
+      table        = fromJust . findTable fTableName $ tables
       dimIdColName = settingDimTableIdColumnName
 
-  let timeUnitColumnInsertSQL cName =
+      timeUnitColumnInsertSQL cName =
         let colName = timeUnitColumnName dimIdColName cName settingTimeUnit
         in (colName, "floor(extract(epoch from " <> fullColName fTableName cName <> ")/"
                         <> Text.pack (show $ timeUnitToSeconds settingTimeUnit) <> ")")
 
-      factColMap = flip concatMap (factColumns fact) $ \col -> case col of
+      factColMap = concatFor (factColumns fact) $ \col -> case col of
         DimTime cName            -> [ timeUnitColumnInsertSQL cName ]
         NoDimId cName            -> [ (cName, fullColName fTableName cName) ]
         FactCount cName          -> [ (cName, "count(*)") ]
@@ -111,22 +112,20 @@ factTableInsertSQL fact = do
                                       , "sum(" <> fullColName fTableName scName <> ")") ]
         _                        -> []
 
-      dimColMap = flip map allDims $ \(dimFact, factTable@Table {..}) ->
+      dimColMap = for allDims $ \(dimFact, factTable@Table {..}) ->
         let colName             = factDimFKIdColumnName settingDimPrefix dimIdColName tableName
             factSourceTableName = factTableName dimFact
-            insertSQL           =
-              if factTable `elem` tables
-               then fullColName factSourceTableName colName
-               else
-                let dimLookupWhereClauses =
-                      map (\(c1, c2) ->
-                            fullColName tableName c1 <> " = " <> fullColName factSourceTableName c2)
-                      $ dimColumnMapping settingDimPrefix dimFact tableName
+            insertSQL           = if factTable `elem` tables
+              then fullColName factSourceTableName colName
+              else let
+                  dimLookupWhereClauses =
+                    [ fullColName tableName c1 <> " = " <> fullColName factSourceTableName c2
+                      | (c1, c2) <- dimColumnMapping settingDimPrefix dimFact tableName ]
                 in "SELECT " <> dimIdColName <> " FROM " <> tableName <> "\nWHERE "
                      <> (Text.concat . intersperse "\n AND " $ dimLookupWhereClauses)
         in (colName, insertSQL)
 
-      colMap = map (\(cName, sql) -> (cName, asName cName sql)) $ factColMap ++ dimColMap
+      colMap = [ (cName, asName cName sql) | (cName, sql) <- factColMap ++ dimColMap ]
 
       joinClauses =
         mapMaybe (\tName -> (\p -> "LEFT JOIN " <> tName <> " ON "<> p) <$> joinClausePreds table tName)

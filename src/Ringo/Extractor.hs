@@ -5,7 +5,7 @@ module Ringo.Extractor
        ) where
 
 import Control.Monad.Reader (Reader, asks)
-import Data.Maybe           (mapMaybe, fromJust)
+import Data.Maybe           (fromJust)
 import Data.Monoid          ((<>))
 
 import Ringo.Extractor.Internal
@@ -22,8 +22,9 @@ extractFactTable fact = do
       dimIdColName             = settingDimTableIdColumnName
       sourceColumnType colName = columnType . fromJust . findColumn colName . tableColumns $ table
 
-      columns = flip concatMap (factColumns fact) $ \col -> case col of
-        DimTime cName            -> [ Column (timeUnitColumnName dimIdColName cName settingTimeUnit) "integer" NotNull ]
+      columns = concatFor (factColumns fact) $ \col -> case col of
+        DimTime cName            ->
+          [ Column (timeUnitColumnName dimIdColName cName settingTimeUnit) "integer" NotNull ]
         NoDimId cName            -> [ fromJust . findColumn cName . tableColumns $ table]
         FactCount cName          -> [ Column cName countColType NotNull ]
         FactSum scName cName     -> [ Column cName (sourceColumnType scName) NotNull ]
@@ -35,22 +36,22 @@ extractFactTable fact = do
           [ Column (cName <> settingCountDistinctColumSuffix) (countColType <> "[]") NotNull ]
         _                        -> []
 
-      fks = flip map allDims $ \(_, Table {..}) ->
+      fks = for allDims $ \(_, Table {..}) ->
         let colName     = factDimFKIdColumnName settingDimPrefix dimIdColName tableName
+            colType     = idColTypeToFKIdColType settingDimTableIdColumnType
             colNullable = if any ((== Null) . columnNullable) tableColumns then Null else NotNull
-        in ( Column colName (idColTypeToFKIdColType settingDimTableIdColumnType) colNullable
-           , ForeignKey tableName [(colName, dimIdColName)]
-           )
+        in ( Column colName colType colNullable , ForeignKey tableName [(colName, dimIdColName)] )
 
       ukColNames =
         (++ map (columnName . fst) fks)
-        . flip mapMaybe (factColumns fact) $ \col -> case col of
+        . forMaybe (factColumns fact) $ \col -> case col of
             DimTime cName -> Just (timeUnitColumnName dimIdColName cName settingTimeUnit)
             NoDimId cName -> Just cName
             _             -> Nothing
 
-  return Table { tableName        =
-                   extractedFactTableName settingFactPrefix settingFactInfix (factName fact) settingTimeUnit
-               , tableColumns     = columns ++ map fst fks
-               , tableConstraints = UniqueKey ukColNames : map snd fks
-               }
+  return Table
+         { tableName        =
+             extractedFactTableName settingFactPrefix settingFactInfix (factName fact) settingTimeUnit
+         , tableColumns     = columns ++ map fst fks
+         , tableConstraints = UniqueKey ukColNames : map snd fks
+         }

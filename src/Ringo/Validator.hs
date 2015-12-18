@@ -46,7 +46,7 @@ validateFact Fact {..} = do
       return $ tableVs ++ parentVs ++ colVs
   where
     checkFactParents fName = do
-      facts  <- asks envFacts
+      facts <- asks envFacts
       case findFact fName facts of
         Nothing    -> return [ MissingFact fName ]
         Just pFact -> validateFact pFact
@@ -56,12 +56,8 @@ validateFact Fact {..} = do
         ++ checkColumnTable tables factCol
 
     checkColumnTable tables factCol = case factCol of
-      DimId tName _  -> go tName
+      DimId tName _  -> maybe [ MissingTable tName ] (const []) $ findTable tName tables
       _              -> []
-      where
-        go tName = case findTable tName tables of
-          Nothing -> [ MissingTable tName ]
-          Just _  -> []
 
 withFactValidation :: Fact -> Reader Env a -> Reader Env (Either [ValidationError] a)
 withFactValidation fact func = do

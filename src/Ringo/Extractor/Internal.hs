@@ -49,7 +49,7 @@ extractDimensionTables fact = do
   return $ dimsFromIds tables ++ dimsFromVals settings (tableColumns table)
   where
     dimsFromIds tables =
-      flip mapMaybe (factColumns fact) $ \fcol -> case fcol of
+      forMaybe (factColumns fact) $ \fcol -> case fcol of
         DimId d _ -> findTable d tables
         _         -> Nothing
 
@@ -63,9 +63,8 @@ extractDimensionTables fact = do
                                        ]
                   })
       . Map.toList
-      . Map.mapWithKey (\dim ->
-                          map (\col@Column {..} -> col { columnName = dimColumnName dim columnName })
-                          . nub)
+      . Map.mapWithKey
+          (\dim ->  map (\col -> col { columnName = dimColumnName dim (columnName col) }) . nub)
       . Map.fromListWith (flip (++))
       . mapMaybe (\fcol -> do
                     DimVal d col <- fcol
