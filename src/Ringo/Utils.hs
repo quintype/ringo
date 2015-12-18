@@ -1,5 +1,7 @@
 module Ringo.Utils where
 
+import qualified Control.Arrow as Arrow
+
 import Data.Maybe (mapMaybe)
 import Data.List  (find)
 
@@ -27,3 +29,32 @@ concatFor = flip concatMap
 concatFor :: [a] -> (a -> [b]) -> [b]
 concatFor = flip concatMap
 #endif
+
+infixr 3 ***, &&&
+
+first :: (a -> a') -> (a, b) -> (a', b)
+first = Arrow.first
+
+second :: (b -> b') -> (a, b) -> (a, b')
+second = Arrow.second
+
+(***) :: (a -> a') -> (b -> b') -> (a, b) -> (a', b')
+(***) = (Arrow.***)
+
+(&&&) :: (a -> b) -> (a -> c) -> a -> (b, c)
+(&&&) = (Arrow.&&&)
+
+dupe :: a -> (a,a)
+dupe x = (x, x)
+
+both :: (a -> b) -> (a, a) -> (b, b)
+both f (x, y) = (f x, f y)
+
+fst3 :: (a, b, c) -> a
+fst3 (a, _, _) = a
+
+snd3 :: (a, b, c) -> b
+snd3 (_, b, _) = b
+
+thd3 :: (a, b, c) -> c
+thd3 (_, _, c) = c

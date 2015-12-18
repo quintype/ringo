@@ -98,18 +98,27 @@ factTableInsertSQL fact = do
 
       timeUnitColumnInsertSQL cName =
         let colName = timeUnitColumnName dimIdColName cName settingTimeUnit
-        in (colName, "floor(extract(epoch from " <> fullColName fTableName cName <> ")/"
-                        <> Text.pack (show $ timeUnitToSeconds settingTimeUnit) <> ")")
+        in ( colName
+           , "floor(extract(epoch from " <> fullColName fTableName cName <> ")/"
+                <> Text.pack (show $ timeUnitToSeconds settingTimeUnit) <> ")"
+           , True
+           )
 
       factColMap = concatFor (factColumns fact) $ \col -> case col of
         DimTime cName            -> [ timeUnitColumnInsertSQL cName ]
-        NoDimId cName            -> [ (cName, fullColName fTableName cName) ]
-        FactCount cName          -> [ (cName, "count(*)") ]
-        FactSum scName cName     -> [ (cName, "sum(" <> fullColName fTableName scName <> ")") ]
-        FactAverage scName cName -> [ ( cName <> settingAvgCountColumSuffix
-                                      , "count(" <> fullColName fTableName scName <> ")")
-                                    , ( cName <> settingAvgSumColumnSuffix
-                                      , "sum(" <> fullColName fTableName scName <> ")") ]
+        NoDimId cName            -> [ (cName, fullColName fTableName cName, True) ]
+        FactCount cName          -> [ (cName, "count(*)", False) ]
+        FactSum scName cName     -> [ (cName, "sum(" <> fullColName fTableName scName <> ")", False) ]
+        FactAverage scName cName ->
+          [ ( cName <> settingAvgCountColumSuffix
+            , "count(" <> fullColName fTableName scName <> ")"
+            , False
+            )
+          , ( cName <> settingAvgSumColumnSuffix
+            , "sum(" <> fullColName fTableName scName <> ")"
+            , False
+            )
+          ]
         _                        -> []
 
       dimColMap = for allDims $ \(dimFact, factTable@Table {..}) ->
@@ -123,26 +132,29 @@ factTableInsertSQL fact = do
                       | (c1, c2) <- dimColumnMapping settingDimPrefix dimFact tableName ]
                 in "SELECT " <> dimIdColName <> " FROM " <> tableName <> "\nWHERE "
                      <> (Text.concat . intersperse "\n AND " $ dimLookupWhereClauses)
-        in (colName, insertSQL)
+        in (colName, insertSQL, True)
 
-      colMap = [ (cName, asName cName sql) | (cName, sql) <- factColMap ++ dimColMap ]
+      colMap = [ (cName, if addAs then asName cName sql else sql, addAs)
+                 | (cName, sql, addAs) <- factColMap ++ dimColMap ]
 
       joinClauses =
         mapMaybe (\tName -> (\p -> "LEFT JOIN " <> tName <> " ON "<> p) <$> joinClausePreds table tName)
         . nub
-        . map (\(dimFact, _) -> factTableName dimFact)
+        . map (factTableName . fst)
         $ allDims
 
   return $ "INSERT INTO "
              <> extractedFactTableName settingFactPrefix settingFactInfix (factName fact) settingTimeUnit
-             <> " (\n" <> Text.concat (intersperse ",\n " . map fst $ colMap) <> "\n)"
-             <> "\nSELECT \n" <> Text.concat (intersperse ",\n " . map snd $ colMap)
+             <> " (\n" <> unlineCols (map fst3 colMap) <> "\n)"
+             <> "\nSELECT \n" <> unlineCols (map snd3 colMap)
              <> "\nFROM " <> fTableName <> "\n" <> Text.concat (intersperse "\n" joinClauses)
-             <> "\nGROUP BY \n" <> Text.concat (intersperse ",\n " . map fst $ colMap)
+             <> "\nGROUP BY \n"
+             <> unlineCols (map ((groupByColPrefix <>) . fst3) . filter thd3 $ colMap)
   where
+    groupByColPrefix        = "xxff_"
     fullColName tName cName = tName <> "." <> cName
-
-    asName cName sql = "(" <> sql <> ")" <> " as " <> cName
+    asName cName sql        = "(" <> sql <> ")" <> " as " <> groupByColPrefix <> cName
+    unlineCols              = Text.concat . intersperse ",\n "
 
     joinClausePreds table oTableName =
       fmap (\(ForeignKey _ colPairs) ->

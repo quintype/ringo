@@ -16,7 +16,8 @@ extractFactTable ::  Fact -> Reader Env Table
 extractFactTable fact = do
   Settings {..} <- asks envSettings
   allDims       <- extractAllDimensionTables fact
-  table         <- asks $ fromJust . findTable (factTableName fact) . envTables
+  tables        <- asks envTables
+  let table     =  fromJust . findTable (factTableName fact) $ tables
 
   let countColType             = settingFactCountColumnType
       dimIdColName             = settingDimTableIdColumnName
@@ -36,10 +37,13 @@ extractFactTable fact = do
           [ Column (cName <> settingCountDistinctColumSuffix) (countColType <> "[]") NotNull ]
         _                        -> []
 
-      fks = for allDims $ \(_, Table {..}) ->
+      fks = for allDims $ \(fact', tab@Table {..}) ->
         let colName     = factDimFKIdColumnName settingDimPrefix dimIdColName tableName
             colType     = idColTypeToFKIdColType settingDimTableIdColumnType
-            colNullable = if any ((== Null) . columnNullable) tableColumns then Null else NotNull
+            colNullable =
+              if tab `elem` tables || fact /= fact' || any ((== Null) . columnNullable) tableColumns
+                then Null
+                else NotNull
         in ( Column colName colType colNullable , ForeignKey tableName [(colName, dimIdColName)] )
 
       ukColNames =
