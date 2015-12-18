@@ -45,10 +45,10 @@ settingsParser = let Settings {..} = defSettings
                      "Suffix for count distinct bucket columns"
      <*> minorOption "dim-id-col-name"
                      settingDimTableIdColumnName
-                     "Name of dimention table id columns"
+                     "Name of dimension table id columns"
      <*> minorOption "dim-id-col-type"
                      settingDimTableIdColumnType
-                     "Type of dimention table id columns"
+                     "Type of dimension table id columns"
      <*> minorOption "fact-count-col-type"
                      settingFactCountColumnType
                      "Type of fact table count columns"
