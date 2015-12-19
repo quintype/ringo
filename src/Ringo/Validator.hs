@@ -1,7 +1,6 @@
 module Ringo.Validator
        ( validateTable
        , validateFact
-       , withFactValidation
        ) where
 
 #if MIN_VERSION_base(4,8,0)
@@ -40,10 +39,12 @@ validateFact Fact {..} = do
   case findTable factTableName tables of
     Nothing    -> return [ MissingTable factTableName ]
     Just table -> do
-      tableVs   <- validateTable table
-      parentVs  <- concat <$> mapM checkFactParents factParentNames
-      let colVs = concatMap (checkColumn tables table) factColumns
-      return $ tableVs ++ parentVs ++ colVs
+      tableVs    <- validateTable table
+      parentVs   <- concat <$> mapM checkFactParents factParentNames
+      let colVs  = concatMap (checkColumn tables table) factColumns
+      let timeVs = [ MissingTimeColumn factTableName
+                     | null [ c | DimTime c <- factColumns ] ]
+      return $ tableVs ++ parentVs ++ colVs ++ timeVs
   where
     checkFactParents fName = do
       facts <- asks envFacts
@@ -58,10 +59,3 @@ validateFact Fact {..} = do
     checkColumnTable tables factCol = case factCol of
       DimId tName _  -> maybe [ MissingTable tName ] (const []) $ findTable tName tables
       _              -> []
-
-withFactValidation :: Fact -> Reader Env a -> Reader Env (Either [ValidationError] a)
-withFactValidation fact func = do
-  errors <- validateFact fact
-  if not $ null errors
-    then return $ Left errors
-    else fmap Right func

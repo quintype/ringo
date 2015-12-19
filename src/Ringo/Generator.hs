@@ -1,7 +1,7 @@
 module Ringo.Generator
        ( tableDefnSQL
        , factTableDefnSQL
-       , dimensionTableInsertSQL
+       , dimensionTablePopulateSQL
        , factTableInsertSQL
        ) where
 
@@ -13,9 +13,10 @@ import Control.Applicative  ((<$>))
 #endif
 
 import Control.Monad.Reader (Reader, asks)
-import Data.List            (intersperse, nub, find)
-import Data.Maybe           (fromJust, mapMaybe)
+import Data.List            (nub, find, subsequences, partition, sortBy)
+import Data.Maybe           (fromJust, mapMaybe, catMaybes)
 import Data.Monoid          ((<>))
+import Data.Ord             (comparing)
 import Data.Text            (Text)
 
 import Ringo.Extractor.Internal
@@ -31,24 +32,44 @@ columnDefnSQL Column {..} =
   columnName <> " " <> columnType <> " " <> nullableDefnSQL columnNullable
 
 colNamesString :: [ColumnName] -> Text
-colNamesString cNames = Text.concat (intersperse ", " cNames)
+colNamesString = Text.intercalate ", "
 
-constraintDefnSQL :: TableName -> TableConstraint -> Text
-constraintDefnSQL tableName constraint =
-  "ALTER TABLE ONLY " <> tableName <> " ADD "
-    <> case constraint of
-         PrimaryKey cName -> "PRIMARY KEY (" <> cName <> ")"
-         UniqueKey cNames -> "UNIQUE (" <> colNamesString cNames <> ")"
-         ForeignKey oTableName cNamePairs ->
-           "FOREIGN KEY (" <> colNamesString (map fst cNamePairs) <> ") REFERENCES "
-             <> oTableName <> " (" <> colNamesString (map snd cNamePairs) <> ")"
+fullColName :: TableName -> ColumnName -> ColumnName
+fullColName tName cName = tName <> "." <> cName
+
+constraintDefnSQL :: Table -> TableConstraint -> [Text]
+constraintDefnSQL Table {..} constraint =
+  let alterTableSQL = "ALTER TABLE ONLY " <> tableName <> " ADD "
+  in case constraint of
+    PrimaryKey cName -> [ alterTableSQL <> "PRIMARY KEY (" <> cName <> ")" ]
+    ForeignKey oTableName cNamePairs ->
+      [ alterTableSQL <> "FOREIGN KEY (" <> colNamesString (map fst cNamePairs) <> ") REFERENCES "
+          <> oTableName <> " (" <> colNamesString (map snd cNamePairs) <> ")" ]
+    UniqueKey cNames -> let
+        (notNullCols, nullCols) =
+          both (map columnName)
+          $ partition ((== NotNull) . columnNullable)
+          $ catMaybes [ findColumn cName tableColumns | cName <- cNames ]
+        combinations =
+          map (\cs -> (cs, [ c | c <- nullCols, c `notElem` cs ]))
+          . sortBy (comparing length)
+          $ subsequences nullCols
+      in [ "CREATE UNIQUE INDEX ON " <> tableName
+              <> " (" <> colNamesString (notNullCols ++ nnCols) <> ")"
+              <>  if null whereClauses
+                    then ""
+                    else "\nWHERE "<> Text.intercalate "\nAND " whereClauses
+           | (nnCols, nCols) <- combinations
+           , not $ null (notNullCols ++ nnCols)
+           , let whereClauses =
+                   [ c <> " IS NOT NULL" | c <- nnCols ] ++ [ c <> " IS NULL" | c <- nCols ] ]
 
 tableDefnSQL :: Table -> [Text]
-tableDefnSQL Table {..} =
-  tableSQL : map (constraintDefnSQL tableName) tableConstraints
+tableDefnSQL table@Table {..} =
+  tableSQL : concatMap (constraintDefnSQL table) tableConstraints
   where
     tableSQL = "CREATE TABLE " <> tableName <> " (\n"
-                 <> (Text.concat . intersperse ",\n" . map columnDefnSQL $ tableColumns)
+                 <> (Text.intercalate ",\n" . map columnDefnSQL $ tableColumns)
                  <> "\n)"
 
 factTableDefnSQL :: Fact -> Table -> Reader Env [Text]
@@ -71,21 +92,33 @@ factTableDefnSQL fact table = do
 
 dimColumnMapping :: Text -> Fact -> TableName -> [(ColumnName, ColumnName)]
 dimColumnMapping dimPrefix fact dimTableName =
-  forMaybe (factColumns fact) $ \fCol -> case fCol of
-    DimVal dName cName | dimPrefix <> dName == dimTableName ->
-      Just (dimColumnName dName cName, cName)
-    _ -> Nothing
+  [ (dimColumnName dName cName, cName)
+    | DimVal dName cName <- factColumns fact , dimPrefix <> dName == dimTableName]
 
-dimensionTableInsertSQL :: Fact -> TableName -> Reader Env Text
-dimensionTableInsertSQL fact dimTableName = do
-  dimPrefix      <- settingDimPrefix <$> asks envSettings
-  let colMapping = dimColumnMapping dimPrefix fact dimTableName
-
-  return $ "INSERT INTO " <> dimTableName <> " (\n"
-             <> colNamesString (map fst colMapping)
-             <> "\n) SELECT DISTINCT \n"
-             <> colNamesString (map snd colMapping)
-             <> "\nFROM " <> factTableName fact
+dimensionTablePopulateSQL :: TablePopulationMode -> Fact -> TableName -> Reader Env Text
+dimensionTablePopulateSQL popMode fact dimTableName = do
+  dimPrefix           <- settingDimPrefix <$> asks envSettings
+  let colMapping      = dimColumnMapping dimPrefix fact dimTableName
+      baseSelectC     = "SELECT DISTINCT\n" <> colNamesString (map snd colMapping) <> "\n"
+                          <> "FROM " <> factTableName fact
+      insertC selectC = "INSERT INTO " <> dimTableName
+                          <> " (\n" <> colNamesString (map fst colMapping) <> "\n) "
+                          <> "SELECT x.* FROM (\n" <> selectC <> ") x"
+      timeCol         = head [ cName | DimTime cName <- factColumns fact ]
+  return $ case popMode of
+    FullPopulation        -> insertC baseSelectC
+    IncrementalPopulation ->
+      insertC (baseSelectC <> "\nWHERE "
+                 <> timeCol <> " > ? AND " <> timeCol <> " <= ?"
+                 <> " AND (\n"
+                 <> Text.intercalate "\nOR " [ c <> " IS NOT NULL" | (_, c) <- colMapping ]
+                 <> "\n)")
+        <> "\nLEFT JOIN " <> dimTableName <> " ON\n"
+        <> Text.intercalate " \nAND "
+              [ fullColName dimTableName c1 <> " IS NOT DISTINCT FROM " <> fullColName "x" c2
+                | (c1, c2) <- colMapping ]
+        <> "\nWHERE " <> Text.intercalate " \nAND "
+                           [ fullColName dimTableName c <> " IS NULL" | (c, _) <- colMapping ]
 
 factTableInsertSQL :: Fact -> Reader Env Text
 factTableInsertSQL fact = do
@@ -131,7 +164,7 @@ factTableInsertSQL fact = do
                     [ fullColName tableName c1 <> " = " <> fullColName factSourceTableName c2
                       | (c1, c2) <- dimColumnMapping settingDimPrefix dimFact tableName ]
                 in "SELECT " <> dimIdColName <> " FROM " <> tableName <> "\nWHERE "
-                     <> (Text.concat . intersperse "\n AND " $ dimLookupWhereClauses)
+                     <> (Text.intercalate "\n AND " $ dimLookupWhereClauses)
         in (colName, insertSQL, True)
 
       colMap = [ (cName, if addAs then asName cName sql else sql, addAs)
@@ -147,18 +180,17 @@ factTableInsertSQL fact = do
              <> extractedFactTableName settingFactPrefix settingFactInfix (factName fact) settingTimeUnit
              <> " (\n" <> unlineCols (map fst3 colMap) <> "\n)"
              <> "\nSELECT \n" <> unlineCols (map snd3 colMap)
-             <> "\nFROM " <> fTableName <> "\n" <> Text.concat (intersperse "\n" joinClauses)
+             <> "\nFROM " <> fTableName <> "\n" <> Text.intercalate"\n" joinClauses
              <> "\nGROUP BY \n"
              <> unlineCols (map ((groupByColPrefix <>) . fst3) . filter thd3 $ colMap)
   where
     groupByColPrefix        = "xxff_"
-    fullColName tName cName = tName <> "." <> cName
     asName cName sql        = "(" <> sql <> ")" <> " as " <> groupByColPrefix <> cName
-    unlineCols              = Text.concat . intersperse ",\n "
+    unlineCols              = Text.intercalate ",\n "
 
     joinClausePreds table oTableName =
       fmap (\(ForeignKey _ colPairs) ->
-              Text.concat . intersperse " AND "
+              Text.intercalate " AND "
               . map (\(c1, c2) -> fullColName (tableName table) c1 <> " = " <> fullColName oTableName c2)
               $ colPairs )
       . find (\cons -> case cons of

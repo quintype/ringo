@@ -93,9 +93,10 @@ defSettings = Settings
               , settingFactInfix                = "_by_"
               }
 
-data ValidationError = MissingTable  !TableName
-                     | MissingFact   !TableName
-                     | MissingColumn !TableName !ColumnName
+data ValidationError = MissingTable      !TableName
+                     | MissingFact       !TableName
+                     | MissingColumn     !TableName !ColumnName
+                     | MissingTimeColumn !TableName
                      deriving (Eq, Show)
 
 data Env = Env
@@ -103,3 +104,5 @@ data Env = Env
            , envFacts    :: ![Fact]
            , envSettings :: !Settings
            } deriving (Eq, Show)
+
+data TablePopulationMode = FullPopulation | IncrementalPopulation deriving (Eq, Show)

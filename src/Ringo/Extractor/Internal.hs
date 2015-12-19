@@ -10,7 +10,7 @@ import Control.Applicative  ((<$>))
 
 import Control.Monad.Reader (Reader, asks)
 import Data.Function        (on)
-import Data.Maybe           (mapMaybe, fromMaybe, fromJust)
+import Data.Maybe           (mapMaybe, fromMaybe, fromJust, catMaybes)
 import Data.Monoid          ((<>))
 import Data.List            (nub, nubBy)
 import Data.Text            (Text)
@@ -48,10 +48,7 @@ extractDimensionTables fact = do
   let table = fromJust . findTable (factTableName fact) $ tables
   return $ dimsFromIds tables ++ dimsFromVals settings (tableColumns table)
   where
-    dimsFromIds tables =
-      forMaybe (factColumns fact) $ \fcol -> case fcol of
-        DimId d _ -> findTable d tables
-        _         -> Nothing
+    dimsFromIds tables = catMaybes [ findTable d tables | DimId d _ <- factColumns fact ]
 
     dimsFromVals Settings {..} tableColumns =
       map (\(dim, cols) ->
