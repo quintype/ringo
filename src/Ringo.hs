@@ -5,7 +5,7 @@ module Ringo
        , G.tableDefnSQL
        , factTableDefnSQL
        , dimensionTablePopulateSQL
-       , factTableInsertSQL
+       , factTablePopulateSQL
        , validateTable
        , validateFact
        ) where
@@ -31,8 +31,9 @@ dimensionTablePopulateSQL :: TablePopulationMode -> Env -> Fact -> TableName -> 
 dimensionTablePopulateSQL popMode env fact =
   flip runReader env . G.dimensionTablePopulateSQL popMode fact
 
-factTableInsertSQL :: Env -> Fact -> Text
-factTableInsertSQL env = flip runReader env . G.factTableInsertSQL
+factTablePopulateSQL :: TablePopulationMode -> Env -> Fact -> Text
+factTablePopulateSQL popMode env =
+  flip runReader env . G.factTablePopulateSQL popMode
 
 validateTable :: Env -> Table -> [ValidationError]
 validateTable env = flip runReader env . V.validateTable

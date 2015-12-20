@@ -47,19 +47,21 @@ writeSQLFiles outputDir env@Env{..} = forM_ sqls $ \(sqlType, table, sql) -> do
     factTableDefnSQLs   = [ (Create , tableName table, unlines . map sqlStr $ factTableDefnSQL env fact table)
                             | (fact, table) <- factTables ]
 
-    dimTablePopulateSQLs typ gen = [ (typ , tableName table, sqlStr $ gen env fact (tableName table))
-                                    | (fact, tabs) <- dimTables
-                                    , table        <- tabs
-                                    , table `notElem` envTables ]
+    dimTablePopulateSQLs typ gen  =
+      [ (typ , tableName table, sqlStr $ gen env fact (tableName table))
+        | (fact, tabs) <- dimTables
+        , table        <- tabs
+        , table `notElem` envTables ]
 
-    factTableInsertSQLs = [ (FullRefresh, tableName table, sqlStr $ factTableInsertSQL env fact)
-                            | (fact, table) <- factTables ]
+    factTablePopulateSQLs typ gen = [ (typ, tableName table, sqlStr $ gen env fact)
+                                      | (fact, table) <- factTables ]
 
     sqls = concat [ dimTableDefnSQLs
                   , factTableDefnSQLs
-                  , dimTablePopulateSQLs FullRefresh $ dimensionTablePopulateSQL FullPopulation
-                  , dimTablePopulateSQLs IncRefresh $ dimensionTablePopulateSQL IncrementalPopulation
-                  , factTableInsertSQLs
+                  , dimTablePopulateSQLs FullRefresh  $ dimensionTablePopulateSQL FullPopulation
+                  , dimTablePopulateSQLs IncRefresh   $ dimensionTablePopulateSQL IncrementalPopulation
+                  , factTablePopulateSQLs FullRefresh $ factTablePopulateSQL FullPopulation
+                  , factTablePopulateSQLs IncRefresh  $ factTablePopulateSQL IncrementalPopulation
                   ]
 
     sqlStr s = Text.unpack $ s <> ";\n"

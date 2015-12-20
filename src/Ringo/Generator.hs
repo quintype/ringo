@@ -2,7 +2,7 @@ module Ringo.Generator
        ( tableDefnSQL
        , factTableDefnSQL
        , dimensionTablePopulateSQL
-       , factTableInsertSQL
+       , factTablePopulateSQL
        ) where
 
 import qualified Data.Text as Text
@@ -120,8 +120,8 @@ dimensionTablePopulateSQL popMode fact dimTableName = do
         <> "\nWHERE " <> Text.intercalate " \nAND "
                            [ fullColName dimTableName c <> " IS NULL" | (c, _) <- colMapping ]
 
-factTableInsertSQL :: Fact -> Reader Env Text
-factTableInsertSQL fact = do
+factTablePopulateSQL :: TablePopulationMode -> Fact -> Reader Env Text
+factTablePopulateSQL popMode fact = do
   Settings {..}    <- asks envSettings
   allDims          <- extractAllDimensionTables fact
   tables           <- asks envTables
@@ -176,11 +176,16 @@ factTableInsertSQL fact = do
         . map (factTableName . fst)
         $ allDims
 
+      timeCol     = fullColName fTableName $ head [ cName | DimTime cName <- factColumns fact ]
+
   return $ "INSERT INTO "
              <> extractedFactTableName settingFactPrefix settingFactInfix (factName fact) settingTimeUnit
              <> " (\n" <> unlineCols (map fst3 colMap) <> "\n)"
              <> "\nSELECT \n" <> unlineCols (map snd3 colMap)
              <> "\nFROM " <> fTableName <> "\n" <> Text.intercalate"\n" joinClauses
+             <> (if popMode == IncrementalPopulation
+                   then "\nWHERE " <> timeCol <> " > ? AND " <> timeCol <> " <= ?"
+                   else "")
              <> "\nGROUP BY \n"
              <> unlineCols (map ((groupByColPrefix <>) . fst3) . filter thd3 $ colMap)
   where
