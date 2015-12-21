@@ -50,23 +50,23 @@ data Fact = Fact
 
 data FactColumn = DimTime           !ColumnName
                 | NoDimId           !ColumnName
-                | DimId             !TableName  !ColumnName
-                | DimVal            !TableName  !ColumnName
-                | FactCount         !ColumnName
-                | FactSum           !ColumnName !ColumnName
-                | FactAverage       !ColumnName !ColumnName
-                | FactCountDistinct !ColumnName
+                | DimId             !TableName          !ColumnName
+                | DimVal            !TableName          !ColumnName
+                | FactCount         !(Maybe ColumnName) !ColumnName
+                | FactSum           !ColumnName         !ColumnName
+                | FactAverage       !ColumnName         !ColumnName
+                | FactCountDistinct !(Maybe ColumnName) !ColumnName
                 deriving (Eq, Show)
 
 factColumnName :: FactColumn -> Maybe ColumnName
-factColumnName (DimTime cName)       = Just cName
-factColumnName (NoDimId cName)       = Just cName
-factColumnName (DimId _ cName)       = Just cName
-factColumnName (DimVal _ cName)      = Just cName
-factColumnName (FactCount _)         = Nothing
-factColumnName (FactSum cName _)     = Just cName
-factColumnName (FactAverage cName _) = Just cName
-factColumnName (FactCountDistinct _) = Nothing
+factColumnName (DimTime cName)             = Just cName
+factColumnName (NoDimId cName)             = Just cName
+factColumnName (DimId _ cName)             = Just cName
+factColumnName (DimVal _ cName)            = Just cName
+factColumnName (FactCount cName _)         = cName
+factColumnName (FactSum cName _)           = Just cName
+factColumnName (FactAverage cName _)       = Just cName
+factColumnName (FactCountDistinct cName _) = cName
 
 data Settings = Settings
                 { settingDimPrefix                :: !Text
@@ -74,7 +74,6 @@ data Settings = Settings
                 , settingTimeUnit                 :: !TimeUnit
                 , settingAvgCountColumSuffix      :: !Text
                 , settingAvgSumColumnSuffix       :: !Text
-                , settingCountDistinctColumSuffix :: !Text
                 , settingDimTableIdColumnName     :: !Text
                 , settingDimTableIdColumnType     :: !Text
                 , settingFactCountColumnType      :: !Text
@@ -91,7 +90,6 @@ defSettings = Settings
               , settingTimeUnit                 = Minute
               , settingAvgCountColumSuffix      = "_count"
               , settingAvgSumColumnSuffix       = "_sum"
-              , settingCountDistinctColumSuffix = "_hll"
               , settingDimTableIdColumnName     = "id"
               , settingDimTableIdColumnType     = "serial"
               , settingFactCountColumnType      = "integer"

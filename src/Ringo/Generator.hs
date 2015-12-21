@@ -140,8 +140,10 @@ factTablePopulateSQL popMode fact = do
       factColMap = concatFor (factColumns fact) $ \col -> case col of
         DimTime cName            -> [ timeUnitColumnInsertSQL cName ]
         NoDimId cName            -> [ (cName, fullColName fTableName cName, True) ]
-        FactCount cName          -> [ (cName, "count(*)", False) ]
-        FactSum scName cName     -> [ (cName, "sum(" <> fullColName fTableName scName <> ")", False) ]
+        FactCount scName cName   ->
+          [ (cName, "count(" <> maybe "*" (fullColName fTableName) scName <> ")", False) ]
+        FactSum scName cName     ->
+          [ (cName, "sum(" <> fullColName fTableName scName <> ")", False) ]
         FactAverage scName cName ->
           [ ( cName <> settingAvgCountColumSuffix
             , "count(" <> fullColName fTableName scName <> ")"

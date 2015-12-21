@@ -52,12 +52,12 @@ instance FromJSON FactColumn where
     case cType of
       "dimtime"           -> DimTime           <$> o .: "column"
       "nodimid"           -> NoDimId           <$> o .: "column"
-      "dimid"             -> DimId             <$> o .: "table"        <*> o .: "column"
-      "dimval"            -> DimVal            <$> o .: "table"        <*> o .: "column"
-      "factcount"         -> FactCount         <$> o .: "column"
-      "factsum"           -> FactSum           <$> o .: "sourcecolumn" <*> o .: "column"
-      "factaverage"       -> FactAverage       <$> o .: "sourcecolumn" <*> o .: "column"
-      "factcountdistinct" -> FactCountDistinct <$> o .: "column"
+      "dimid"             -> DimId             <$> o .: "table"         <*> o .: "column"
+      "dimval"            -> DimVal            <$> o .: "table"         <*> o .: "column"
+      "factcount"         -> FactCount         <$> o .:? "sourcecolumn" <*> o .: "column"
+      "factsum"           -> FactSum           <$> o .: "sourcecolumn"  <*> o .: "column"
+      "factaverage"       -> FactAverage       <$> o .: "sourcecolumn"  <*> o .: "column"
+      "factcountdistinct" -> FactCountDistinct <$> o .:? "sourcecolumn" <*> o .: "column"
       _                   -> fail $ "Invalid fact column type: " ++ cType
   parseJSON o          = fail $ "Cannot parse fact column: " ++ show o
 

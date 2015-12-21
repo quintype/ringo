@@ -40,9 +40,6 @@ settingsParser = let Settings {..} = defSettings
      <*> minorOption "avg-sum-col-suffix"
                      settingAvgSumColumnSuffix
                      "Suffix for average sum columns"
-     <*> minorOption "count-distinct-col-suffix"
-                     settingCountDistinctColumSuffix
-                     "Suffix for count distinct bucket columns"
      <*> minorOption "dim-id-col-name"
                      settingDimTableIdColumnName
                      "Name of dimension table id columns"

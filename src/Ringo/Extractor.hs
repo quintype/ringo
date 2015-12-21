@@ -29,18 +29,17 @@ extractFactTable fact = do
       sourceColumnType colName = columnType . fromJust . findColumn colName . tableColumns $ table
 
       columns = concatFor (factColumns fact) $ \col -> case col of
-        DimTime cName            ->
+        DimTime cName             ->
           [ Column (timeUnitColumnName dimIdColName cName settingTimeUnit) "integer" NotNull ]
-        NoDimId cName            -> [ fromJust . findColumn cName . tableColumns $ table]
-        FactCount cName          -> [ Column cName countColType NotNull ]
-        FactSum scName cName     -> [ Column cName (sourceColumnType scName) NotNull ]
-        FactAverage scName cName ->
+        NoDimId cName             -> [ fromJust . findColumn cName . tableColumns $ table]
+        FactCount _ cName         -> [ Column cName countColType NotNull ]
+        FactSum scName cName      -> [ Column cName (sourceColumnType scName) NotNull ]
+        FactAverage scName cName  ->
           [ Column (cName <> settingAvgCountColumSuffix) countColType NotNull
           , Column (cName <> settingAvgSumColumnSuffix) (sourceColumnType scName) NotNull
           ]
-        FactCountDistinct cName  ->
-          [ Column (cName <> settingCountDistinctColumSuffix) (countColType <> "[]") NotNull ]
-        _                        -> []
+        FactCountDistinct _ cName -> [ Column cName (countColType <> "[]") NotNull ]
+        _                         -> []
 
       fks = for allDims $ \(fact', tab@Table {..}) ->
         let colName     = factDimFKIdColumnName settingDimPrefix dimIdColName tableName
