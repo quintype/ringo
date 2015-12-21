@@ -1,7 +1,9 @@
 module Ringo.Types where
 
-import           Data.Text (Text)
 import qualified Data.Text as Text
+
+import Data.Map  (Map)
+import Data.Text (Text)
 
 type ColumnName = Text
 type ColumnType = Text
@@ -77,6 +79,9 @@ data Settings = Settings
                 , settingDimTableIdColumnType     :: !Text
                 , settingFactCountColumnType      :: !Text
                 , settingFactInfix                :: !Text
+                , settingDependenciesJSONFileName :: !Text
+                , settingFactsJSONFileName        :: !Text
+                , settingDimensionJSONFileName    :: !Text
                 } deriving (Eq, Show)
 
 defSettings :: Settings
@@ -91,6 +96,9 @@ defSettings = Settings
               , settingDimTableIdColumnType     = "serial"
               , settingFactCountColumnType      = "integer"
               , settingFactInfix                = "_by_"
+              , settingDependenciesJSONFileName = "dependencies.json"
+              , settingFactsJSONFileName        = "facts.json"
+              , settingDimensionJSONFileName    = "dimensions.json"
               }
 
 data ValidationError = MissingTable      !TableName
@@ -106,3 +114,5 @@ data Env = Env
            } deriving (Eq, Show)
 
 data TablePopulationMode = FullPopulation | IncrementalPopulation deriving (Eq, Show)
+
+type Dependencies = Map TableName [TableName]

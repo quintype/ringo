@@ -164,7 +164,7 @@ factTablePopulateSQL popMode fact = do
                     [ fullColName tableName c1 <> " = " <> fullColName factSourceTableName c2
                       | (c1, c2) <- dimColumnMapping settingDimPrefix dimFact tableName ]
                 in "SELECT " <> dimIdColName <> " FROM " <> tableName <> "\nWHERE "
-                     <> (Text.intercalate "\n AND " $ dimLookupWhereClauses)
+                     <> Text.intercalate "\n AND " dimLookupWhereClauses
         in (colName, insertSQL, True)
 
       colMap = [ (cName, if addAs then asName cName sql else sql, addAs)

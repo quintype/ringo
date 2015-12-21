@@ -2,11 +2,16 @@ module Ringo.Extractor
        ( extractDimensionTables
        , extractAllDimensionTables
        , extractFactTable
+       , extractDependencies
        ) where
+
+import qualified Data.Map  as Map
+import qualified Data.Tree as Tree
 
 import Control.Monad.Reader (Reader, asks)
 import Data.Maybe           (fromJust)
 import Data.Monoid          ((<>))
+import Data.List            (nub)
 
 import Ringo.Extractor.Internal
 import Ringo.Types
@@ -59,3 +64,30 @@ extractFactTable fact = do
          , tableColumns     = columns ++ map fst fks
          , tableConstraints = UniqueKey ukColNames : map snd fks
          }
+
+extractDependencies :: Fact -> Reader Env Dependencies
+extractDependencies fact = do
+  settings@Settings{..} <- asks envSettings
+  facts                 <- asks envFacts
+  let factSourceDeps =
+        nub . Tree.flatten . flip Tree.unfoldTree fact $ \fct ->
+          (factTableName fct, parentFacts fct facts)
+      factDimDeps    =
+        nub . concat . Tree.flatten . flip Tree.unfoldTree fact $ \fct ->
+          ( forMaybe (factColumns fct) $ \col -> case col of
+              DimVal table _ -> Just $ settingDimPrefix  <> table
+              DimId table _  -> Just table
+              _              -> Nothing
+          , parentFacts fct facts
+          )
+
+      dimDeps  = Map.fromList [ (settingDimPrefix <> table, [factTableName fact])
+                                | DimVal table _ <- factColumns fact ]
+
+      factDeps = Map.singleton (extractedTable settings) (factSourceDeps ++ factDimDeps)
+  return $ Map.union dimDeps factDeps
+  where
+    extractedTable Settings {..} =
+      extractedFactTableName settingFactPrefix settingFactInfix (factName fact) settingTimeUnit
+
+    parentFacts fct facts = [ fromJust $ findFact pf facts | pf <- factParentNames fct ]

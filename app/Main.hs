@@ -1,7 +1,10 @@
 module Main where
 
-import qualified Data.Text as Text
+import qualified Data.ByteString.Lazy as BS
+import qualified Data.Map             as Map
+import qualified Data.Text            as Text
 
+import Data.Aeson       (encode)
 import Data.Char        (toLower)
 import Data.List        (nub)
 import Data.Monoid      ((<>))
@@ -26,15 +29,28 @@ main = do
       let env    = Env tables facts progSettings
       let errors = nub $ concatMap (validateTable env) tables ++ concatMap (validateFact env) facts
       if not $ null errors
-        then mapM_ print errors              >> exitFailure
-        else writeSQLFiles progOutputDir env >> exitSuccess
+        then mapM_ print errors           >> exitFailure
+        else writeFiles progOutputDir env >> exitSuccess
 
-writeSQLFiles :: FilePath -> Env -> IO ()
-writeSQLFiles outputDir env@Env{..} = forM_ sqls $ \(sqlType, table, sql) -> do
-  let dirName  = outputDir </> map toLower (show sqlType)
-      fileName = dirName </> Text.unpack table <.> "sql"
-  createDirectoryIfMissing True dirName
-  writeFile fileName sql
+writeFiles :: FilePath -> Env -> IO ()
+writeFiles outputDir env@Env{..} = do
+  let Settings{..} = envSettings
+  forM_ sqls $ \(sqlType, table, sql) -> do
+    let dirName = outputDir </> map toLower (show sqlType)
+    createDirectoryIfMissing True dirName
+    writeFile (dirName </> Text.unpack table <.> "sql") sql
+
+  BS.writeFile (outputDir </> Text.unpack settingDependenciesJSONFileName)
+    . encode
+    . foldl (\acc -> Map.union acc . extractDependencies env) Map.empty
+    $ envFacts
+
+  BS.writeFile (outputDir </> Text.unpack settingFactsJSONFileName) . encode $
+    [ tableName table | (_, tabs) <- dimTables, table <- tabs , table `notElem` envTables ]
+
+  BS.writeFile (outputDir </> Text.unpack settingDimensionJSONFileName) . encode $
+    [ tableName table | (_, table) <- factTables ]
+
   where
     dimTables  = [ (fact, extractDimensionTables env fact) | fact <- envFacts ]
     factTables = [ (fact, extractFactTable env fact)       | fact <- envFacts ]

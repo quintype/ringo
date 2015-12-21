@@ -55,6 +55,15 @@ settingsParser = let Settings {..} = defSettings
      <*> minorOption "fact-infix"
                      settingFactInfix
                      "Infix for fact tables"
+     <*> minorOption "dependencies-json-file"
+                     settingDependenciesJSONFileName
+                     "Name of the output dependencies json file"
+     <*> minorOption "facts-json-file"
+                     settingFactsJSONFileName
+                     "Name of the output facts json file"
+     <*> minorOption "dimensions-json-file"
+                     settingDimensionJSONFileName
+                     "Name of the output dimensions json file"
   where
     minorOption longDesc defValue helpTxt =
       Text.pack <$> strOption (long longDesc
