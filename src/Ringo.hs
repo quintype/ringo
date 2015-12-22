@@ -35,7 +35,7 @@ dimensionTablePopulateSQL :: TablePopulationMode -> Env -> Fact -> TableName -> 
 dimensionTablePopulateSQL popMode env fact =
   flip runReader env . G.dimensionTablePopulateSQL popMode fact
 
-factTablePopulateSQL :: TablePopulationMode -> Env -> Fact -> Text
+factTablePopulateSQL :: TablePopulationMode -> Env -> Fact -> [Text]
 factTablePopulateSQL popMode env =
   flip runReader env . G.factTablePopulateSQL popMode
 

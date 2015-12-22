@@ -49,6 +49,11 @@ settingsParser = let Settings {..} = defSettings
      <*> minorOption "fact-count-col-type"
                      settingFactCountColumnType
                      "Type of fact table count columns"
+     <*> option auto (long "fact-count-distinct-error-rate"
+                      <> hidden
+                      <> value settingFactCountDistinctErrorRate
+                      <> showDefault
+                      <> help "Error rate for count distinct calulations")
      <*> minorOption "fact-infix"
                      settingFactInfix
                      "Infix for fact tables"

@@ -38,7 +38,7 @@ extractFactTable fact = do
           [ Column (cName <> settingAvgCountColumSuffix) countColType NotNull
           , Column (cName <> settingAvgSumColumnSuffix) (sourceColumnType scName) NotNull
           ]
-        FactCountDistinct _ cName -> [ Column cName (countColType <> "[]") NotNull ]
+        FactCountDistinct _ cName -> [ Column cName "json" NotNull ]
         _                         -> []
 
       fks = for allDims $ \(fact', tab@Table {..}) ->

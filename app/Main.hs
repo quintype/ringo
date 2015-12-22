@@ -69,7 +69,7 @@ writeFiles outputDir env@Env{..} = do
         , table        <- tabs
         , table `notElem` envTables ]
 
-    factTablePopulateSQLs typ gen = [ (typ, tableName table, sqlStr $ gen env fact)
+    factTablePopulateSQLs typ gen = [ (typ, tableName table, unlines . map sqlStr  $ gen env fact)
                                       | (fact, table) <- factTables ]
 
     sqls = concat [ dimTableDefnSQLs

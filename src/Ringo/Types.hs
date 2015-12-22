@@ -69,34 +69,36 @@ factColumnName (FactAverage cName _)       = Just cName
 factColumnName (FactCountDistinct cName _) = cName
 
 data Settings = Settings
-                { settingDimPrefix                :: !Text
-                , settingFactPrefix               :: !Text
-                , settingTimeUnit                 :: !TimeUnit
-                , settingAvgCountColumSuffix      :: !Text
-                , settingAvgSumColumnSuffix       :: !Text
-                , settingDimTableIdColumnName     :: !Text
-                , settingDimTableIdColumnType     :: !Text
-                , settingFactCountColumnType      :: !Text
-                , settingFactInfix                :: !Text
-                , settingDependenciesJSONFileName :: !Text
-                , settingFactsJSONFileName        :: !Text
-                , settingDimensionJSONFileName    :: !Text
+                { settingDimPrefix                  :: !Text
+                , settingFactPrefix                 :: !Text
+                , settingTimeUnit                   :: !TimeUnit
+                , settingAvgCountColumSuffix        :: !Text
+                , settingAvgSumColumnSuffix         :: !Text
+                , settingDimTableIdColumnName       :: !Text
+                , settingDimTableIdColumnType       :: !Text
+                , settingFactCountColumnType        :: !Text
+                , settingFactCountDistinctErrorRate :: !Double
+                , settingFactInfix                  :: !Text
+                , settingDependenciesJSONFileName   :: !Text
+                , settingFactsJSONFileName          :: !Text
+                , settingDimensionJSONFileName      :: !Text
                 } deriving (Eq, Show)
 
 defSettings :: Settings
 defSettings = Settings
-              { settingDimPrefix                = "dim_"
-              , settingFactPrefix               = "fact_"
-              , settingTimeUnit                 = Minute
-              , settingAvgCountColumSuffix      = "_count"
-              , settingAvgSumColumnSuffix       = "_sum"
-              , settingDimTableIdColumnName     = "id"
-              , settingDimTableIdColumnType     = "serial"
-              , settingFactCountColumnType      = "integer"
-              , settingFactInfix                = "_by_"
-              , settingDependenciesJSONFileName = "dependencies.json"
-              , settingFactsJSONFileName        = "facts.json"
-              , settingDimensionJSONFileName    = "dimensions.json"
+              { settingDimPrefix                  = "dim_"
+              , settingFactPrefix                 = "fact_"
+              , settingTimeUnit                   = Minute
+              , settingAvgCountColumSuffix        = "_count"
+              , settingAvgSumColumnSuffix         = "_sum"
+              , settingDimTableIdColumnName       = "id"
+              , settingDimTableIdColumnType       = "serial"
+              , settingFactCountColumnType        = "integer"
+              , settingFactCountDistinctErrorRate = 0.05
+              , settingFactInfix                  = "_by_"
+              , settingDependenciesJSONFileName   = "dependencies.json"
+              , settingFactsJSONFileName          = "facts.json"
+              , settingDimensionJSONFileName      = "dimensions.json"
               }
 
 data ValidationError = MissingTable      !TableName
