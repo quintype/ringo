@@ -45,24 +45,25 @@ constraintDefnSQL Table {..} constraint =
     ForeignKey oTableName cNamePairs ->
       [ alterTableSQL <> "FOREIGN KEY (" <> colNamesString (map fst cNamePairs) <> ") REFERENCES "
           <> oTableName <> " (" <> colNamesString (map snd cNamePairs) <> ")" ]
-    UniqueKey cNames -> let
-        (notNullCols, nullCols) =
-          both (map columnName)
-          $ partition ((== NotNull) . columnNullable)
-          $ catMaybes [ findColumn cName tableColumns | cName <- cNames ]
-        combinations =
-          map (\cs -> (cs, [ c | c <- nullCols, c `notElem` cs ]))
-          . sortBy (comparing length)
-          $ subsequences nullCols
-      in [ "CREATE UNIQUE INDEX ON " <> tableName
-              <> " (" <> colNamesString (notNullCols ++ nnCols) <> ")"
-              <>  if null whereClauses
-                    then ""
-                    else "\nWHERE "<> Text.intercalate "\nAND " whereClauses
-           | (nnCols, nCols) <- combinations
-           , not $ null (notNullCols ++ nnCols)
-           , let whereClauses =
-                   [ c <> " IS NOT NULL" | c <- nnCols ] ++ [ c <> " IS NULL" | c <- nCols ] ]
+    UniqueKey cNames -> ["CREATE UNIQUE INDEX ON " <> tableName <> "(" <> colNamesString cNames <> ")"]
+      -- let
+      --   (notNullCols, nullCols) =
+      --     both (map columnName)
+      --     $ partition ((== NotNull) . columnNullable)
+      --     $ catMaybes [ findColumn cName tableColumns | cName <- cNames ]
+      --   combinations =
+      --     map (\cs -> (cs, [ c | c <- nullCols, c `notElem` cs ]))
+      --     . sortBy (comparing length)
+      --     $ subsequences nullCols
+      -- in [ "CREATE UNIQUE INDEX ON " <> tableName
+      --         <> " (" <> colNamesString (notNullCols ++ nnCols) <> ")"
+      --         <>  if null whereClauses
+      --               then ""
+      --               else "\nWHERE "<> Text.intercalate "\nAND " whereClauses
+      --      | (nnCols, nCols) <- combinations
+      --      , not $ null (notNullCols ++ nnCols)
+      --      , let whereClauses =
+      --              [ c <> " IS NOT NULL" | c <- nnCols ] ++ [ c <> " IS NULL" | c <- nCols ] ]
 
 tableDefnSQL :: Table -> [Text]
 tableDefnSQL table@Table {..} =
@@ -95,11 +96,32 @@ dimColumnMapping dimPrefix fact dimTableName =
   [ (dimColumnName dName cName, cName)
     | DimVal dName cName <- factColumns fact , dimPrefix <> dName == dimTableName]
 
+coalesceColumn :: Column -> Text
+coalesceColumn Column{..} =
+  if columnNullable == Null
+    then "coalesce(" <> columnName <> "," <> defVal columnType <> ")"
+    else columnName
+  where
+    defVal colType
+     | "integer" `Text.isPrefixOf` colType = "-42"
+     | "timestamp" `Text.isPrefixOf` colType = "'00-00-00 00:00:00'"
+     | "character" `Text.isPrefixOf` colType = "'XXX_UNKNOWN_'"
+     | "uuid" `Text.isPrefixOf` colType = "'00000000-0000-0000-0000-000000000000'::uuid"
+     | "boolean" `Text.isPrefixOf` colType = "false"
+     | otherwise = error $ "Unknown column type: " ++ Text.unpack colType
+
 dimensionTablePopulateSQL :: TablePopulationMode -> Fact -> TableName -> Reader Env Text
 dimensionTablePopulateSQL popMode fact dimTableName = do
   dimPrefix           <- settingDimPrefix <$> asks envSettings
-  let colMapping      = dimColumnMapping dimPrefix fact dimTableName
-      baseSelectC     = "SELECT DISTINCT\n" <> colNamesString (map snd colMapping) <> "\n"
+  tables              <- asks envTables
+  let factTable       = fromJust $ findTable (factTableName fact) tables
+      colMapping      = dimColumnMapping dimPrefix fact dimTableName
+      baseSelectC     = "SELECT DISTINCT\n"
+                          <> colNamesString
+                              (map (\(_, c) ->
+                                     coalesceColumn . fromJust . findColumn c $ (tableColumns factTable))
+                                   colMapping)
+                          <> "\n"
                           <> "FROM " <> factTableName fact
       insertC selectC = "INSERT INTO " <> dimTableName
                           <> " (\n" <> colNamesString (map fst colMapping) <> "\n) "
