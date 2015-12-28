@@ -24,9 +24,9 @@ main = do
   ProgArgs {..} <- parseArgs
   result        <- parseInput progInputFile
   case result of
-    Left err              -> putStrLn err >> exitFailure
-    Right (tables, facts) -> do
-      let env    = Env tables facts progSettings
+    Left err                        -> putStrLn err >> exitFailure
+    Right (tables, facts, defaults) -> do
+      let env    = Env tables facts progSettings defaults
       let errors = nub $ concatMap (validateTable env) tables ++ concatMap (validateFact env) facts
       if not $ null errors
         then mapM_ print errors           >> exitFailure

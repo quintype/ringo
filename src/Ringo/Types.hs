@@ -101,17 +101,21 @@ defSettings = Settings
               , settingDimensionJSONFileName      = "dimensions.json"
               }
 
-data ValidationError = MissingTable      !TableName
-                     | MissingFact       !TableName
-                     | MissingColumn     !TableName !ColumnName
-                     | MissingTimeColumn !TableName
-                     | NullableColumn    !TableName !ColumnName
+data ValidationError = MissingTable             !TableName
+                     | MissingFact              !TableName
+                     | MissingColumn            !TableName !ColumnName
+                     | MissingTimeColumn        !TableName
+                     | MissingNotNullConstraint !TableName !ColumnName
+                     | MissingTypeDefault       !Text
                      deriving (Eq, Show)
 
+type TypeDefaults = Map Text Text
+
 data Env = Env
-           { envTables   :: ![Table]
-           , envFacts    :: ![Fact]
-           , envSettings :: !Settings
+           { envTables       :: ![Table]
+           , envFacts        :: ![Fact]
+           , envSettings     :: !Settings
+           , envTypeDefaults :: !TypeDefaults
            } deriving (Eq, Show)
 
 data TablePopulationMode = FullPopulation | IncrementalPopulation deriving (Eq, Show)

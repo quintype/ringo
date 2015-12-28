@@ -5,6 +5,7 @@ module Ringo.Generator
        , factTablePopulateSQL
        ) where
 
+import qualified Data.Map as Map
 import qualified Data.Text as Text
 
 #if MIN_VERSION_base(4,8,0)
@@ -77,33 +78,33 @@ dimColumnMapping dimPrefix fact dimTableName =
   [ (dimColumnName dName cName, cName)
     | DimVal dName cName <- factColumns fact , dimPrefix <> dName == dimTableName]
 
-coalesceColumn :: TableName -> Column -> Text
-coalesceColumn tName Column{..} =
+coalesceColumn :: TypeDefaults -> TableName -> Column -> Text
+coalesceColumn defaults tName Column{..} =
   if columnNullable == Null
     then "coalesce(" <> fqColName <> "," <> defVal columnType <> ")"
     else fqColName
   where
     fqColName = fullColName tName columnName
 
-    defVal colType
-     | "integer" `Text.isPrefixOf` colType = "-42"
-     | "timestamp" `Text.isPrefixOf` colType = "'00-00-00 00:00:00'"
-     | "character" `Text.isPrefixOf` colType = "'XXX_UNKNOWN_'"
-     | "uuid" `Text.isPrefixOf` colType = "'00000000-0000-0000-0000-000000000000'::uuid"
-     | "boolean" `Text.isPrefixOf` colType = "false"
-     | otherwise = error $ "Unknown column type: " ++ Text.unpack colType
+    defVal colType =
+      fromMaybe (error $ "Default value not known for column type: " ++ Text.unpack colType)
+      . fmap snd
+      . find (\(k, _) -> k `Text.isPrefixOf` colType)
+      . Map.toList
+      $ defaults
 
 dimensionTablePopulateSQL :: TablePopulationMode -> Fact -> TableName -> Reader Env Text
 dimensionTablePopulateSQL popMode fact dimTableName = do
   dimPrefix           <- settingDimPrefix <$> asks envSettings
   tables              <- asks envTables
+  defaults            <- asks envTypeDefaults
   let factTable       = fromJust $ findTable (factTableName fact) tables
       colMapping      = dimColumnMapping dimPrefix fact dimTableName
       baseSelectC     = "SELECT DISTINCT\n"
                           <> joinColumnNames
                               (map (\(_, cName) ->
                                      let col = fromJust . findColumn cName $ tableColumns factTable
-                                     in coalesceColumn (factTableName fact) col <> " AS " <> cName)
+                                     in coalesceColumn defaults (factTableName fact) col <> " AS " <> cName)
                                    colMapping)
                           <> "\n"
                           <> "FROM " <> factTableName fact
@@ -139,6 +140,7 @@ factTablePopulateSQL popMode fact = do
   Settings {..}      <- asks envSettings
   allDims            <- extractAllDimensionTables fact
   tables             <- asks envTables
+  defaults           <- asks envTypeDefaults
   let fTableName     = factTableName fact
       fTable         = fromJust . findTable fTableName $ tables
       dimIdColName   = settingDimTableIdColumnName
@@ -156,7 +158,7 @@ factTablePopulateSQL popMode fact = do
         DimTime cName             -> [ timeUnitColumnInsertSQL cName ]
         NoDimId cName             ->
           let sCol = fromJust . findColumn cName $ tableColumns fTable
-          in [ (cName, coalesceColumn fTableName sCol, True) ]
+          in [ (cName, coalesceColumn defaults fTableName sCol, True) ]
         FactCount scName cName    ->
           [ (cName, "count(" <> maybe "*" (fullColName fTableName) scName <> ")", False) ]
         FactSum scName cName      ->
@@ -184,7 +186,7 @@ factTablePopulateSQL popMode fact = do
                      $ fullColName factSourceTableName colName
               else let
                   dimLookupWhereClauses =
-                    [ fullColName tableName c1 <> " = " <> coalesceColumn factSourceTableName col2
+                    [ fullColName tableName c1 <> " = " <> coalesceColumn defaults factSourceTableName col2
                       | (c1, c2) <- dimColumnMapping settingDimPrefix dimFact tableName
                       , let col2 = fromJust . findColumn c2 $ tableColumns factSourceTable ]
                 in "SELECT " <> dimIdColName <> " FROM " <> tableName <> "\nWHERE "

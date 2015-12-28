@@ -3,6 +3,9 @@ module Ringo.Validator
        , validateFact
        ) where
 
+import qualified Data.Map as Map
+import qualified Data.Text as Text
+
 #if MIN_VERSION_base(4,8,0)
 #else
 import Control.Applicative ((<$>))
@@ -21,8 +24,13 @@ checkTableForCol tab colName =
 
 validateTable :: Table -> Reader Env [ValidationError]
 validateTable table = do
-  tables <- asks envTables
-  return . concatMap (checkConstraint tables) . tableConstraints $ table
+  tables   <- asks envTables
+  defaults <- Map.keys <$> asks envTypeDefaults
+  let constVs       = concatMap (checkConstraint tables) . tableConstraints $ table
+      typeDefaultVs = [ MissingTypeDefault cType
+                        | Column _ cType _ <- tableColumns table
+                        , null . filter (`Text.isPrefixOf` cType) $ defaults]
+  return $ constVs ++ typeDefaultVs
   where
     checkConstraint _ (PrimaryKey colName)    = checkTableForCol table colName
     checkConstraint _ (UniqueKey columnNames) = checkTableForColRefs table columnNames
@@ -45,7 +53,7 @@ validateFact Fact {..} = do
       let colVs  = concatMap (checkColumn tables table) factColumns
       let timeVs = [ MissingTimeColumn factTableName
                      | null [ c | DimTime c <- factColumns ] ]
-      let notNullVs = [ NullableColumn factTableName c
+      let notNullVs = [ MissingNotNullConstraint factTableName c
                         | DimTime c <- factColumns
                         , let col = findColumn c (tableColumns table)
                         , isJust col

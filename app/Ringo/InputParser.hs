@@ -68,15 +68,15 @@ instance FromJSON Fact where
                               <*> o .: "columns"
   parseJSON o          = fail $ "Cannot parse fact: " ++ show o
 
-data Input = Input [Table] [Fact] deriving (Eq, Show)
+data Input = Input [Table] [Fact] TypeDefaults deriving (Eq, Show)
 
 instance FromJSON Input where
-  parseJSON (Object o) = Input <$> o .: "tables" <*> o .: "facts"
+  parseJSON (Object o) = Input <$> o .: "tables" <*> o .: "facts" <*> o .: "defaults"
   parseJSON o          = fail $ "Cannot parse input: " ++ show o
 
-parseInput :: FilePath -> IO (Either String ([Table], [Fact]))
+parseInput :: FilePath -> IO (Either String ([Table], [Fact], TypeDefaults))
 parseInput file = do
   result <- decodeFileEither file
   return $ case result of
     Left pe                    -> Left $ prettyPrintParseException pe
-    Right (Input tables facts) -> Right (tables, facts)
+    Right (Input tables facts defaults) -> Right (tables, facts, defaults)
