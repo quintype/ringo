@@ -101,9 +101,9 @@ dimensionTablePopulateSQL popMode fact dimTableName = do
       colMapping      = dimColumnMapping dimPrefix fact dimTableName
       baseSelectC     = "SELECT DISTINCT\n"
                           <> joinColumnNames
-                              (map (\(_, c) ->
-                                     let col = fromJust . findColumn c $ tableColumns factTable
-                                     in coalesceColumn (factTableName fact) col)
+                              (map (\(_, cName) ->
+                                     let col = fromJust . findColumn cName $ tableColumns factTable
+                                     in coalesceColumn (factTableName fact) col <> " AS " <> cName)
                                    colMapping)
                           <> "\n"
                           <> "FROM " <> factTableName fact
