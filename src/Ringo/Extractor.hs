@@ -30,7 +30,7 @@ extractFactTable fact = do
 
       columns = concatFor (factColumns fact) $ \col -> case col of
         DimTime cName             ->
-          [ Column (timeUnitColumnName dimIdColName cName settingTimeUnit) "integer" NotNull ]
+          [ Column (timeUnitColumnName dimIdColName cName settingTimeUnit) "bigint" NotNull ]
         NoDimId cName             -> [ fromJust . findColumn cName . tableColumns $ table]
         FactCount _ cName         -> [ Column cName countColType NotNull ]
         FactSum scName cName      -> [ Column cName (sourceColumnType scName) NotNull ]
@@ -41,17 +41,13 @@ extractFactTable fact = do
         FactCountDistinct _ cName -> [ Column cName "json" NotNull ]
         _                         -> []
 
-      fks = for allDims $ \(fact', tab@Table {..}) ->
+      fkCols = for allDims $ \(_, Table {..}) ->
         let colName     = factDimFKIdColumnName settingDimPrefix dimIdColName tableName
             colType     = idColTypeToFKIdColType settingDimTableIdColumnType
-            colNullable =
-              if tab `elem` tables || fact /= fact' || any ((== Null) . columnNullable) tableColumns
-                then Null
-                else NotNull
-        in ( Column colName colType colNullable , ForeignKey tableName [(colName, dimIdColName)] )
+        in Column colName colType NotNull
 
       ukColNames =
-        (++ map (columnName . fst) fks)
+        (++ map columnName fkCols)
         . forMaybe (factColumns fact) $ \col -> case col of
             DimTime cName -> Just (timeUnitColumnName dimIdColName cName settingTimeUnit)
             NoDimId cName -> Just cName
@@ -60,8 +56,8 @@ extractFactTable fact = do
   return Table
          { tableName        =
              extractedFactTableName settingFactPrefix settingFactInfix (factName fact) settingTimeUnit
-         , tableColumns     = columns ++ map fst fks
-         , tableConstraints = UniqueKey ukColNames : map snd fks
+         , tableColumns     = columns ++ fkCols
+         , tableConstraints = [ UniqueKey ukColNames ]
          }
 
 extractDependencies :: Fact -> Reader Env Dependencies

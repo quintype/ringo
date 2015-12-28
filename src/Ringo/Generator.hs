@@ -13,10 +13,9 @@ import Control.Applicative  ((<$>))
 #endif
 
 import Control.Monad.Reader (Reader, asks)
-import Data.List            (nub, find, subsequences, partition, sortBy)
-import Data.Maybe           (fromJust, fromMaybe, mapMaybe, catMaybes)
+import Data.List            (nub, find)
+import Data.Maybe           (fromJust, fromMaybe, mapMaybe)
 import Data.Monoid          ((<>))
-import Data.Ord             (comparing)
 import Data.Text            (Text)
 
 import Ringo.Extractor.Internal
@@ -31,8 +30,8 @@ columnDefnSQL :: Column -> Text
 columnDefnSQL Column {..} =
   columnName <> " " <> columnType <> " " <> nullableDefnSQL columnNullable
 
-colNamesString :: [ColumnName] -> Text
-colNamesString = Text.intercalate ", "
+joinColumnNames :: [ColumnName] -> Text
+joinColumnNames = Text.intercalate ",\n"
 
 fullColName :: TableName -> ColumnName -> ColumnName
 fullColName tName cName = tName <> "." <> cName
@@ -43,34 +42,16 @@ constraintDefnSQL Table {..} constraint =
   in case constraint of
     PrimaryKey cName -> [ alterTableSQL <> "PRIMARY KEY (" <> cName <> ")" ]
     ForeignKey oTableName cNamePairs ->
-      [ alterTableSQL <> "FOREIGN KEY (" <> colNamesString (map fst cNamePairs) <> ") REFERENCES "
-          <> oTableName <> " (" <> colNamesString (map snd cNamePairs) <> ")" ]
-    UniqueKey cNames -> ["CREATE UNIQUE INDEX ON " <> tableName <> "(" <> colNamesString cNames <> ")"]
-      -- let
-      --   (notNullCols, nullCols) =
-      --     both (map columnName)
-      --     $ partition ((== NotNull) . columnNullable)
-      --     $ catMaybes [ findColumn cName tableColumns | cName <- cNames ]
-      --   combinations =
-      --     map (\cs -> (cs, [ c | c <- nullCols, c `notElem` cs ]))
-      --     . sortBy (comparing length)
-      --     $ subsequences nullCols
-      -- in [ "CREATE UNIQUE INDEX ON " <> tableName
-      --         <> " (" <> colNamesString (notNullCols ++ nnCols) <> ")"
-      --         <>  if null whereClauses
-      --               then ""
-      --               else "\nWHERE "<> Text.intercalate "\nAND " whereClauses
-      --      | (nnCols, nCols) <- combinations
-      --      , not $ null (notNullCols ++ nnCols)
-      --      , let whereClauses =
-      --              [ c <> " IS NOT NULL" | c <- nnCols ] ++ [ c <> " IS NULL" | c <- nCols ] ]
+      [ alterTableSQL <> "FOREIGN KEY (" <> joinColumnNames (map fst cNamePairs) <> ") REFERENCES "
+          <> oTableName <> " (" <> joinColumnNames (map snd cNamePairs) <> ")" ]
+    UniqueKey cNames -> ["CREATE UNIQUE INDEX ON " <> tableName <> " (" <> joinColumnNames cNames <> ")"]
 
 tableDefnSQL :: Table -> [Text]
 tableDefnSQL table@Table {..} =
   tableSQL : concatMap (constraintDefnSQL table) tableConstraints
   where
     tableSQL = "CREATE TABLE " <> tableName <> " (\n"
-                 <> (Text.intercalate ",\n" . map columnDefnSQL $ tableColumns)
+                 <> (joinColumnNames . map columnDefnSQL $ tableColumns)
                  <> "\n)"
 
 factTableDefnSQL :: Fact -> Table -> Reader Env [Text]
@@ -96,12 +77,14 @@ dimColumnMapping dimPrefix fact dimTableName =
   [ (dimColumnName dName cName, cName)
     | DimVal dName cName <- factColumns fact , dimPrefix <> dName == dimTableName]
 
-coalesceColumn :: Column -> Text
-coalesceColumn Column{..} =
+coalesceColumn :: TableName -> Column -> Text
+coalesceColumn tName Column{..} =
   if columnNullable == Null
-    then "coalesce(" <> columnName <> "," <> defVal columnType <> ")"
-    else columnName
+    then "coalesce(" <> fqColName <> "," <> defVal columnType <> ")"
+    else fqColName
   where
+    fqColName = fullColName tName columnName
+
     defVal colType
      | "integer" `Text.isPrefixOf` colType = "-42"
      | "timestamp" `Text.isPrefixOf` colType = "'00-00-00 00:00:00'"
@@ -117,14 +100,15 @@ dimensionTablePopulateSQL popMode fact dimTableName = do
   let factTable       = fromJust $ findTable (factTableName fact) tables
       colMapping      = dimColumnMapping dimPrefix fact dimTableName
       baseSelectC     = "SELECT DISTINCT\n"
-                          <> colNamesString
+                          <> joinColumnNames
                               (map (\(_, c) ->
-                                     coalesceColumn . fromJust . findColumn c $ (tableColumns factTable))
+                                     let col = fromJust . findColumn c $ tableColumns factTable
+                                     in coalesceColumn (factTableName fact) col)
                                    colMapping)
                           <> "\n"
                           <> "FROM " <> factTableName fact
       insertC selectC = "INSERT INTO " <> dimTableName
-                          <> " (\n" <> colNamesString (map fst colMapping) <> "\n) "
+                          <> " (\n" <> joinColumnNames (map fst colMapping) <> "\n) "
                           <> "SELECT x.* FROM (\n" <> selectC <> ") x"
       timeCol         = head [ cName | DimTime cName <- factColumns fact ]
   return $ case popMode of
@@ -156,21 +140,23 @@ factTablePopulateSQL popMode fact = do
   allDims            <- extractAllDimensionTables fact
   tables             <- asks envTables
   let fTableName     = factTableName fact
-      table          = fromJust . findTable fTableName $ tables
+      fTable         = fromJust . findTable fTableName $ tables
       dimIdColName   = settingDimTableIdColumnName
-      tablePKColName = head [ cName | PrimaryKey cName <- tableConstraints table ]
+      tablePKColName = head [ cName | PrimaryKey cName <- tableConstraints fTable ]
 
       timeUnitColumnInsertSQL cName =
         let colName = timeUnitColumnName dimIdColName cName settingTimeUnit
         in ( colName
-           , "floor(extract(epoch from " <> fullColName fTableName cName <> ")/"
-                <> Text.pack (show $ timeUnitToSeconds settingTimeUnit) <> ")"
+           , "extract(epoch from " <> fullColName fTableName cName <> ")::bigint/"
+                <> Text.pack (show $ timeUnitToSeconds settingTimeUnit)
            , True
            )
 
       factColMap = concatFor (factColumns fact) $ \col -> case col of
         DimTime cName             -> [ timeUnitColumnInsertSQL cName ]
-        NoDimId cName             -> [ (cName, fullColName fTableName cName, True) ]
+        NoDimId cName             ->
+          let sCol = fromJust . findColumn cName $ tableColumns fTable
+          in [ (cName, coalesceColumn fTableName sCol, True) ]
         FactCount scName cName    ->
           [ (cName, "count(" <> maybe "*" (fullColName fTableName) scName <> ")", False) ]
         FactSum scName cName      ->
@@ -188,24 +174,32 @@ factTablePopulateSQL popMode fact = do
         FactCountDistinct _ cName -> [ (cName, "'{}'::json", False)]
         _                        -> []
 
-      dimColMap = for allDims $ \(dimFact, factTable@Table {..}) ->
+      dimColMap = for allDims $ \(dimFact, factTable@Table {tableName}) ->
         let colName             = factDimFKIdColumnName settingDimPrefix dimIdColName tableName
+            col                 = fromJust . findColumn colName $ tableColumns factSourceTable
             factSourceTableName = factTableName dimFact
-            insertSQL           = if factTable `elem` tables
-              then fullColName factSourceTableName colName
+            factSourceTable     = fromJust . findTable factSourceTableName $ tables
+            insertSQL           = if factTable `elem` tables -- existing dimension table
+              then (if columnNullable col == Null then coalesceFKId else id)
+                     $ fullColName factSourceTableName colName
               else let
                   dimLookupWhereClauses =
-                    [ fullColName tableName c1 <> " = " <> fullColName factSourceTableName c2
-                      | (c1, c2) <- dimColumnMapping settingDimPrefix dimFact tableName ]
+                    [ fullColName tableName c1 <> " = " <> coalesceColumn factSourceTableName col2
+                      | (c1, c2) <- dimColumnMapping settingDimPrefix dimFact tableName
+                      , let col2 = fromJust . findColumn c2 $ tableColumns factSourceTable ]
                 in "SELECT " <> dimIdColName <> " FROM " <> tableName <> "\nWHERE "
-                     <> Text.intercalate "\n AND " dimLookupWhereClauses
-        in (colName, insertSQL, True)
+                          <> Text.intercalate "\n AND " dimLookupWhereClauses
+            insertSQL' = if factSourceTableName == fTableName
+                           then insertSQL
+                           else coalesceFKId insertSQL
+
+        in (colName, insertSQL', True)
 
       colMap = [ (cName, (sql, groupByColPrefix <> cName), addAs)
                  | (cName, sql, addAs) <- factColMap ++ dimColMap ]
 
       joinClauses =
-        mapMaybe (\tName -> (\p -> "LEFT JOIN " <> tName <> "\nON "<> p) <$> joinClausePreds table tName)
+        mapMaybe (\tName -> (\p -> "LEFT JOIN " <> tName <> "\nON "<> p) <$> joinClausePreds fTable tName)
         . nub
         . map (factTableName . fst)
         $ allDims
@@ -260,14 +254,14 @@ factTablePopulateSQL popMode fact = do
           in "UPDATE " <> extFactTableName
                <> "\nSET " <> cName <> " = " <> fullColName "xyz" cName
                <> "\nFROM ("
-               <> "\nSELECT " <> Text.intercalate ",\n" (origGroupByCols ++ [aggSelectClause])
+               <> "\nSELECT " <> joinColumnNames (origGroupByCols ++ [aggSelectClause])
                <> "\nFROM (\n" <> selectSQL <> "\n) zyx"
-               <> "\nGROUP BY \n" <> Text.intercalate ",\n" origGroupByCols
+               <> "\nGROUP BY \n" <> joinColumnNames origGroupByCols
                <> "\n) xyz"
                <> "\n WHERE\n"
                <> Text.intercalate "\nAND "
-                    [ coalesceFKId (fullColName extFactTableName .fromJust . Text.stripPrefix groupByColPrefix $ col)
-                        <> " = " <> coalesceFKId (fullColName "xyz" col)
+                    [ fullColName extFactTableName .fromJust . Text.stripPrefix groupByColPrefix $ col
+                        <> " = " <> fullColName "xyz" col
                       | col <- origGroupByCols ]
 
   return $ insertIntoInsertSQL <> "\n" <> toSelectSQL insertIntoSelectSQL :
@@ -287,20 +281,23 @@ factTablePopulateSQL popMode fact = do
       $ table
 
     toSelectSQL FactTablePopulateSelectSQL {..} =
-      "SELECT \n" <> Text.intercalate ",\n " (map (uncurry asName) ftpsSelectCols)
+      "SELECT \n" <> joinColumnNames (map (uncurry asName) ftpsSelectCols)
         <> "\nFROM " <> ftpsSelectTable
         <> (if not . null $ ftpsJoinClauses
-              then "\n" <> Text.intercalate"\n" ftpsJoinClauses
+              then "\n" <> Text.intercalate "\n" ftpsJoinClauses
               else "")
         <> (if not . null $ ftpsWhereClauses
              then "\nWHERE " <> Text.intercalate "\nAND " ftpsWhereClauses
              else "")
         <> "\nGROUP BY \n"
-        <> Text.intercalate ",\n " ftpsGroupByCols
+        <> joinColumnNames ftpsGroupByCols
       where
         asName sql alias = "(" <> sql <> ")" <> " as " <> alias
 
-    coalesceFKId col = "coalesce(" <> col <> ", -1)"
+    coalesceFKId col =
+      if "coalesce" `Text.isPrefixOf` col
+        then col
+        else "coalesce((" <> col <> "), -1)"
 
     bucketCount :: Double -> Integer
     bucketCount errorRate =

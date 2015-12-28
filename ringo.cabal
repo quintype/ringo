@@ -28,7 +28,7 @@ library
                        mtl        >=2.1 && <2.3
   ghc-options:         -Wall -fno-warn-unused-do-bind -funbox-strict-fields -fno-warn-orphans -O2
   default-extensions:  OverloadedStrings, RecordWildCards, ScopedTypeVariables, BangPatterns,
-                       TupleSections, CPP
+                       TupleSections, CPP, NamedFieldPuns
   default-language:    Haskell2010
 
 executable ringo
@@ -49,7 +49,7 @@ executable ringo
                        ringo
   ghc-options:         -Wall -fno-warn-unused-do-bind -funbox-strict-fields -fno-warn-orphans -O2
   default-extensions:  OverloadedStrings, RecordWildCards, ScopedTypeVariables, BangPatterns,
-                       TupleSections, CPP
+                       TupleSections, CPP, NamedFieldPuns
   default-language:    Haskell2010
 
 test-suite ringo-test

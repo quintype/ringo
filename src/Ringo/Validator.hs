@@ -10,6 +10,7 @@ import Control.Applicative ((<$>))
 
 import Control.Monad.Reader (Reader, asks)
 
+import Data.Maybe  (isJust, fromJust)
 import Ringo.Types
 import Ringo.Utils
 
@@ -44,7 +45,12 @@ validateFact Fact {..} = do
       let colVs  = concatMap (checkColumn tables table) factColumns
       let timeVs = [ MissingTimeColumn factTableName
                      | null [ c | DimTime c <- factColumns ] ]
-      return $ tableVs ++ parentVs ++ colVs ++ timeVs
+      let notNullVs = [ NullableColumn factTableName c
+                        | DimTime c <- factColumns
+                        , let col = findColumn c (tableColumns table)
+                        , isJust col
+                        , columnNullable (fromJust col) == Null ]
+      return $ tableVs ++ parentVs ++ colVs ++ timeVs ++ notNullVs
   where
     checkFactParents fName = do
       facts <- asks envFacts

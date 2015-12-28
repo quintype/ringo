@@ -61,7 +61,10 @@ extractDimensionTables fact = do
                   })
       . Map.toList
       . Map.mapWithKey
-          (\dim ->  map (\col -> col { columnName = dimColumnName dim (columnName col) }) . nub)
+          (\dim ->  map (\col -> col { columnName     = dimColumnName dim (columnName col)
+                                     , columnNullable = NotNull
+                                     })
+                    . nub)
       . Map.fromListWith (flip (++))
       . mapMaybe (\fcol -> do
                     DimVal d col <- fcol

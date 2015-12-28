@@ -105,6 +105,7 @@ data ValidationError = MissingTable      !TableName
                      | MissingFact       !TableName
                      | MissingColumn     !TableName !ColumnName
                      | MissingTimeColumn !TableName
+                     | NullableColumn    !TableName !ColumnName
                      deriving (Eq, Show)
 
 data Env = Env
