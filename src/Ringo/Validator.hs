@@ -60,7 +60,7 @@ validateFact Fact {..} = do
               , let col = findColumn cName (tableColumns table)
               , isJust col
               , let cType = columnType $ fromJust col
-              , null . filter (`Text.isPrefixOf` cType) $ defaults ]
+              , not . any (`Text.isPrefixOf` cType) $ defaults ]
 
       return $ tableVs ++ parentVs ++ colVs ++ timeVs ++ notNullVs ++ typeDefaultVs
   where

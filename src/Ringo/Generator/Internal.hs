@@ -4,7 +4,6 @@ import qualified Data.Map as Map
 import qualified Data.Text as Text
 
 import Data.List   (find)
-import Data.Maybe  (fromMaybe)
 import Data.Monoid ((<>))
 import Data.Text   (Text)
 
@@ -31,8 +30,7 @@ coalesceColumn defaults tName Column{..} =
     fqColName = fullColumnName tName columnName
 
     defVal colType =
-      fromMaybe (error $ "Default value not known for column type: " ++ Text.unpack colType)
-      . fmap snd
+      maybe (error $ "Default value not known for column type: " ++ Text.unpack colType) snd
       . find (\(k, _) -> k `Text.isPrefixOf` colType)
       . Map.toList
       $ defaults

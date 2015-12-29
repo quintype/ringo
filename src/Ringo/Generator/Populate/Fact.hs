@@ -1,3 +1,4 @@
+{-# LANGUAGE QuasiQuotes #-}
 module Ringo.Generator.Populate.Fact (factTablePopulateSQL) where
 
 import qualified Data.Text as Text
@@ -12,11 +13,37 @@ import Data.List            (nub)
 import Data.Maybe           (fromJust, fromMaybe, mapMaybe, listToMaybe)
 import Data.Monoid          ((<>))
 import Data.Text            (Text)
+import Text.RawString.QQ    (r)
 
 import Ringo.Extractor.Internal
 import Ringo.Generator.Internal
 import Ringo.Types
 import Ringo.Utils
+
+ilog2FunctionString :: Text
+ilog2FunctionString = [r|CREATE OR REPLACE FUNCTION ilog2(v integer)
+    RETURNS integer AS
+$$
+DECLARE
+    r integer;
+    shift integer;
+BEGIN
+    IF v > x'FFFF'::integer THEN r := 1 << 4; ELSE r := 0 << 4; END IF;
+    v := v >> r;
+    IF v > x'FF'::integer THEN shift := 1 << 3; ELSE shift := 0 << 3; END IF;
+    v := v >> shift;
+    r := r | shift;
+    IF v > x'F'::integer THEN shift := 1 << 2; ELSE shift := 0 << 2; END IF;
+    v := v >> shift;
+    r := r | shift;
+    IF v > x'3'::integer THEN shift := 1 << 1; ELSE shift := 0 << 3; END IF;
+    v := v >> shift;
+    r := r | shift;
+    r := r | (v >> 1);
+    RETURN r;
+END;
+$$
+LANGUAGE 'plpgsql' IMMUTABLE|]
 
 data FactTablePopulateSelectSQL = FactTablePopulateSelectSQL
                                 { ftpsSelectCols   :: ![(Text, Text)]
@@ -37,41 +64,42 @@ factTableUpdateSQL fact groupByColPrefix populateSelectSQL@FactTablePopulateSele
       extFactTableName  =
         extractedFactTableName settingFactPrefix settingFactInfix (factName fact) settingTimeUnit
 
-  return $ for countDistinctCols $ \(FactCountDistinct scName cName) ->
-    let unqCol           = fullColumnName fTableName (fromMaybe tablePKColName scName) <> "::text"
+  return . (\xs -> if null xs then xs else ilog2FunctionString : xs)
+    $ for countDistinctCols $ \(FactCountDistinct scName cName) ->
+      let unqCol           = fullColumnName fTableName (fromMaybe tablePKColName scName) <> "::text"
 
-        bucketSelectCols =
-          [ ( "hashtext(" <> unqCol <> ") & "
-               <> Text.pack (show $ bucketCount settingFactCountDistinctErrorRate - 1)
-            , cName <> "_bnum"
-            )
-          , ( "31 - floor(log(2, min(hashtext(" <> unqCol <> ") & ~(1 << 31))))::int"
-            , cName <> "_bhash"
-            )
-          ]
+          bucketSelectCols =
+            [ ( "hashtext(" <> unqCol <> ") & "
+                 <> Text.pack (show $ bucketCount settingFactCountDistinctErrorRate - 1)
+              , cName <> "_bnum"
+              )
+            , ( "31 - ilog2(min(hashtext(" <> unqCol <> ") & ~(1 << 31)))"
+              , cName <> "_bhash"
+              )
+            ]
 
-        selectSQL        = toSelectSQL $
-          populateSelectSQL
-            { ftpsSelectCols   = filter ((`elem` ftpsGroupByCols) . snd) ftpsSelectCols ++ bucketSelectCols
-            , ftpsGroupByCols  = ftpsGroupByCols ++ [ cName <> "_bnum" ]
-            , ftpsWhereClauses = ftpsWhereClauses ++ [ unqCol <> " IS NOT NULL" ]
-            }
+          selectSQL        = toSelectSQL $
+            populateSelectSQL
+              { ftpsSelectCols   = filter ((`elem` ftpsGroupByCols) . snd) ftpsSelectCols ++ bucketSelectCols
+              , ftpsGroupByCols  = ftpsGroupByCols ++ [ cName <> "_bnum" ]
+              , ftpsWhereClauses = ftpsWhereClauses ++ [ unqCol <> " IS NOT NULL" ]
+              }
 
-        aggSelectClause  =
-          "json_object_agg(" <> cName <> "_bnum, " <> cName <> "_bhash) AS " <> cName
+          aggSelectClause  =
+            "json_object_agg(" <> cName <> "_bnum, " <> cName <> "_bhash) AS " <> cName
 
-    in "UPDATE " <> extFactTableName
-         <> "\nSET " <> cName <> " = " <> fullColumnName "xyz" cName
-         <> "\nFROM ("
-         <> "\nSELECT " <> joinColumnNames (ftpsGroupByCols ++ [aggSelectClause])
-         <> "\nFROM (\n" <> selectSQL <> "\n) zyx"
-         <> "\nGROUP BY \n" <> joinColumnNames ftpsGroupByCols
-         <> "\n) xyz"
-         <> "\n WHERE\n"
-         <> Text.intercalate "\nAND "
-              [ fullColumnName extFactTableName .fromJust . Text.stripPrefix groupByColPrefix $ col
-                  <> " = " <> fullColumnName "xyz" col
-                | col <- ftpsGroupByCols ]
+      in "UPDATE " <> extFactTableName
+           <> "\nSET " <> cName <> " = " <> fullColumnName "xyz" cName
+           <> "\nFROM ("
+           <> "\nSELECT " <> joinColumnNames (ftpsGroupByCols ++ [aggSelectClause])
+           <> "\nFROM (\n" <> selectSQL <> "\n) zyx"
+           <> "\nGROUP BY \n" <> joinColumnNames ftpsGroupByCols
+           <> "\n) xyz"
+           <> "\n WHERE\n"
+           <> Text.intercalate "\nAND "
+                [ fullColumnName extFactTableName .fromJust . Text.stripPrefix groupByColPrefix $ col
+                    <> " = " <> fullColumnName "xyz" col
+                  | col <- ftpsGroupByCols ]
   where
     bucketCount :: Double -> Integer
     bucketCount errorRate =
