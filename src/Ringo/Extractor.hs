@@ -31,7 +31,9 @@ extractFactTable fact = do
       columns = concatFor (factColumns fact) $ \col -> case col of
         DimTime cName             ->
           [ Column (timeUnitColumnName dimIdColName cName settingTimeUnit) "bigint" NotNull ]
-        NoDimId cName             -> [ fromJust . findColumn cName . tableColumns $ table] -- TODO should be not null
+        NoDimId cName             -> let
+            col' = fromJust . findColumn cName . tableColumns $ table
+          in [ col' { columnNullable = NotNull } ]
         FactCount _ cName         -> [ Column cName countColType NotNull ]
         FactSum scName cName      -> [ Column cName (sourceColumnType scName) NotNull ]
         FactAverage scName cName  ->
