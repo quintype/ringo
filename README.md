@@ -1,4 +1,6 @@
 # ringo
+ [![Build Status](https://travis-ci.org/quintype/ringo.svg?branch=master)](https://travis-ci.org/quintype/ringo)
+
  A tool to transform Postgres OLTP database schemas to OLAP database schemas automatically.
  
 ## Setup instructions
