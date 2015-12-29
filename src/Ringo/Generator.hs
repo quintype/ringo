@@ -104,21 +104,23 @@ dimensionTablePopulateSQL popMode fact dimTableName = do
                           , let col    = fromJust . findColumn cName $ tableColumns factTable ]
       baseSelectC     = "SELECT DISTINCT\n" <> joinColumnNames selectCols
                           <> "\nFROM " <> factTableName fact
-      insertC selectC = "INSERT INTO " <> dimTableName
-                          <> " (\n" <> joinColumnNames (map fst colMapping) <> "\n) "
-                          <> "SELECT x.* FROM (\n" <> selectC <> ") x"
+      baseWhereC      = "(\n"
+                          <> Text.intercalate "\nOR " [ c <> " IS NOT NULL" | (_, c) <- colMapping ]
+                          <> "\n)"
+      insertC selectC whereCs =
+        "INSERT INTO " <> dimTableName
+          <> " (\n" <> joinColumnNames (map fst colMapping) <> "\n) "
+          <> "SELECT x.* FROM (\n"
+          <> selectC <> "\nWHERE " <> Text.intercalate " AND\n" whereCs
+          <> ") x"
       timeCol         = head [ cName | DimTime cName <- factColumns fact ]
   return $ case popMode of
-    FullPopulation        -> insertC baseSelectC
+    FullPopulation        -> insertC baseSelectC [baseWhereC]
     IncrementalPopulation ->
-      insertC (baseSelectC <> "\nWHERE "
-                 <> timeCol <> " > ? AND " <> timeCol <> " <= ?"
-                 <> " AND (\n"
-                 <> Text.intercalate "\nOR " [ c <> " IS NOT NULL" | (_, c) <- colMapping ]
-                 <> "\n)")
+      insertC baseSelectC [baseWhereC, timeCol <> " > ?", timeCol <> " <= ?"]
         <> "\nLEFT JOIN " <> dimTableName <> " ON\n"
         <> Text.intercalate " \nAND "
-              [ fullColName dimTableName c1 <> " IS NOT DISTINCT FROM " <> fullColName "x" c2 -- TODO can be replaced with = ?
+              [ fullColName dimTableName c1 <> " = " <> fullColName "x" c2
                 | (c1, c2) <- colMapping ]
         <> "\nWHERE " <> Text.intercalate " \nAND "
                            [ fullColName dimTableName c <> " IS NULL" | (c, _) <- colMapping ]
@@ -232,15 +234,12 @@ factTablePopulateSQL popMode fact = do
             [ fullColName tableName dimColName <> " = " <> coalesceColumn defaults factSourceTableName sourceCol
               | (dimColName, sourceColName) <- dimColumnMapping settingDimPrefix dimFact tableName
               , let sourceCol = fromJust . findColumn sourceColName $ tableColumns factSourceTable ]
-          insertSQL           = if factTable `elem` tables -- existing dimension table
+          insertSQL             = if factTable `elem` tables -- existing dimension table
             then (if columnNullable dimFKIdColumn == Null then coalesceFKId else id)
                    $ fullColName factSourceTableName dimFKIdColName
             else "SELECT " <> dimIdColName <> " FROM " <> tableName <> "\nWHERE "
                   <> Text.intercalate "\n AND " dimLookupWhereClauses
-          insertSQL' = if factSourceTableName == fTableName
-                         then insertSQL
-                         else coalesceFKId insertSQL -- TODO always coalesce
-        in (dimFKIdColName, insertSQL', True)
+        in (dimFKIdColName, coalesceFKId insertSQL, True)
 
       colMap              = [ (cName, (sql, groupByColPrefix <> cName), addToGroupBy)
                               | (cName, sql, addToGroupBy) <- factColMap ++ dimColMap ]
