@@ -45,10 +45,10 @@ writeFiles outputDir env@Env{..} = do
     . foldl (\acc -> Map.union acc . extractDependencies env) Map.empty
     $ envFacts
 
-  BS.writeFile (outputDir </> Text.unpack settingFactsJSONFileName) . encode $
+  BS.writeFile (outputDir </> Text.unpack settingDimensionJSONFileName) . encode $
     [ tableName table | (_, tabs) <- dimTables, table <- tabs , table `notElem` envTables ]
 
-  BS.writeFile (outputDir </> Text.unpack settingDimensionJSONFileName) . encode $
+  BS.writeFile (outputDir </> Text.unpack settingFactsJSONFileName) . encode $
     [ tableName table | (_, table) <- factTables ]
 
   where
