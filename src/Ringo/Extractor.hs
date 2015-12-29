@@ -31,7 +31,7 @@ extractFactTable fact = do
       columns = concatFor (factColumns fact) $ \col -> case col of
         DimTime cName             ->
           [ Column (timeUnitColumnName dimIdColName cName settingTimeUnit) "bigint" NotNull ]
-        NoDimId cName             -> [ fromJust . findColumn cName . tableColumns $ table]
+        NoDimId cName             -> [ fromJust . findColumn cName . tableColumns $ table] -- TODO should be not null
         FactCount _ cName         -> [ Column cName countColType NotNull ]
         FactSum scName cName      -> [ Column cName (sourceColumnType scName) NotNull ]
         FactAverage scName cName  ->
@@ -41,13 +41,13 @@ extractFactTable fact = do
         FactCountDistinct _ cName -> [ Column cName "json" NotNull ]
         _                         -> []
 
-      fkCols = for allDims $ \(_, Table {..}) ->
+      fkColumns = for allDims $ \(_, Table {..}) ->
         let colName     = factDimFKIdColumnName settingDimPrefix dimIdColName tableName
             colType     = idColTypeToFKIdColType settingDimTableIdColumnType
         in Column colName colType NotNull
 
       ukColNames =
-        (++ map columnName fkCols)
+        (++ map columnName fkColumns)
         . forMaybe (factColumns fact) $ \col -> case col of
             DimTime cName -> Just (timeUnitColumnName dimIdColName cName settingTimeUnit)
             NoDimId cName -> Just cName
@@ -56,7 +56,7 @@ extractFactTable fact = do
   return Table
          { tableName        =
              extractedFactTableName settingFactPrefix settingFactInfix (factName fact) settingTimeUnit
-         , tableColumns     = columns ++ fkCols
+         , tableColumns     = columns ++ fkColumns
          , tableConstraints = [ UniqueKey ukColNames ]
          }
 

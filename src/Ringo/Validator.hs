@@ -29,7 +29,7 @@ validateTable table = do
   let constVs       = concatMap (checkConstraint tables) . tableConstraints $ table
       typeDefaultVs = [ MissingTypeDefault cType
                         | Column _ cType _ <- tableColumns table
-                        , null . filter (`Text.isPrefixOf` cType) $ defaults]
+                        , null . filter (`Text.isPrefixOf` cType) $ defaults] -- TODO only dimval columns need this check
   return $ constVs ++ typeDefaultVs
   where
     checkConstraint _ (PrimaryKey colName)    = checkTableForCol table colName

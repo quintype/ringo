@@ -80,6 +80,4 @@ extractAllDimensionTables fact = do
   parentDims <- concat <$> mapM extract (factParentNames fact)
   return . nubBy ((==) `on` snd) $ myDims ++ parentDims
   where
-    extract fName = do
-      facts <- asks envFacts
-      extractAllDimensionTables . fromJust . findFact fName $ facts
+    extract fName = asks envFacts >>= extractAllDimensionTables . fromJust . findFact fName

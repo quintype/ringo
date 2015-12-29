@@ -8,8 +8,8 @@ import qualified Data.Vector as V
 import Control.Applicative ((<$>), (<*>), pure)
 #endif
 
-import Data.Maybe          (fromMaybe)
-import Data.Vector         ((!), (!?))
+import Data.Maybe       (fromMaybe)
+import Data.Vector      ((!), (!?))
 import Data.Yaml hiding (Null)
 
 import Ringo.Types
