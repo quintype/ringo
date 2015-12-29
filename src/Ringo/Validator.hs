@@ -25,12 +25,7 @@ checkTableForCol tab colName =
 validateTable :: Table -> Reader Env [ValidationError]
 validateTable table = do
   tables   <- asks envTables
-  defaults <- Map.keys <$> asks envTypeDefaults
-  let constVs       = concatMap (checkConstraint tables) . tableConstraints $ table
-      typeDefaultVs = [ MissingTypeDefault cType
-                        | Column _ cType _ <- tableColumns table
-                        , null . filter (`Text.isPrefixOf` cType) $ defaults] -- TODO only dimval columns need this check
-  return $ constVs ++ typeDefaultVs
+  return . concatMap (checkConstraint tables) . tableConstraints $ table
   where
     checkConstraint _ (PrimaryKey colName)    = checkTableForCol table colName
     checkConstraint _ (UniqueKey columnNames) = checkTableForColRefs table columnNames
@@ -45,20 +40,29 @@ validateTable table = do
 validateFact :: Fact -> Reader Env [ValidationError]
 validateFact Fact {..} = do
   tables <- asks envTables
+  defaults <- Map.keys <$> asks envTypeDefaults
   case findTable factTableName tables of
     Nothing    -> return [ MissingTable factTableName ]
     Just table -> do
       tableVs    <- validateTable table
       parentVs   <- concat <$> mapM checkFactParents factParentNames
-      let colVs  = concatMap (checkColumn tables table) factColumns
-      let timeVs = [ MissingTimeColumn factTableName
-                     | null [ c | DimTime c <- factColumns ] ]
-      let notNullVs = [ MissingNotNullConstraint factTableName c
-                        | DimTime c <- factColumns
-                        , let col = findColumn c (tableColumns table)
-                        , isJust col
-                        , columnNullable (fromJust col) == Null ]
-      return $ tableVs ++ parentVs ++ colVs ++ timeVs ++ notNullVs
+      let colVs         = concatMap (checkColumn tables table) factColumns
+          timeVs        = [ MissingTimeColumn factTableName
+                            | null [ c | DimTime c <- factColumns ] ]
+          notNullVs     = [ MissingNotNullConstraint factTableName c
+                            | DimTime c <- factColumns
+                            , let col   = findColumn c (tableColumns table)
+                            , isJust col
+                            , columnNullable (fromJust col) == Null ]
+          typeDefaultVs =
+            [ MissingTypeDefault cType
+              | cName   <- [ c | DimVal _ c <- factColumns ] ++ [ c | NoDimId c <- factColumns ]
+              , let col = findColumn cName (tableColumns table)
+              , isJust col
+              , let cType = columnType $ fromJust col
+              , null . filter (`Text.isPrefixOf` cType) $ defaults ]
+
+      return $ tableVs ++ parentVs ++ colVs ++ timeVs ++ notNullVs ++ typeDefaultVs
   where
     checkFactParents fName = do
       facts <- asks envFacts
