@@ -71,6 +71,9 @@ settingsParser = let Settings {..} = defSettings
                       <> value settingForeignKeyIdCoalesceValue
                       <> showDefault
                       <> help "Value to coalease missing foriegn key ids to, in fact tables")
+     <*> minorOption "tablename-suffix-template"
+                     settingTableNameSuffixTemplate
+                     "Suffix template for table names in SQL"
   where
     minorOption longDesc defValue helpTxt =
       Text.pack <$> strOption (long longDesc

@@ -18,30 +18,35 @@ import Ringo.Types
 
 dimensionTablePopulateSQL :: TablePopulationMode -> Fact -> TableName -> Reader Env Text
 dimensionTablePopulateSQL popMode fact dimTableName = do
-  dimPrefix           <- settingDimPrefix <$> asks envSettings
-  tables              <- asks envTables
-  defaults            <- asks envTypeDefaults
-  let factTable       = fromJust $ findTable (factTableName fact) tables
-      colMapping      = dimColumnMapping dimPrefix fact dimTableName
-      selectCols      = [ coalesceColumn defaults (factTableName fact) col <> " AS " <> cName
-                          | (_, cName) <- colMapping
-                          , let col    = fromJust . findColumn cName $ tableColumns factTable ]
-      baseSelectC     = "SELECT DISTINCT\n" <> joinColumnNames selectCols
-                          <> "\nFROM " <> factTableName fact
-      baseWhereC      = "(\n"
-                          <> Text.intercalate "\nOR " [ c <> " IS NOT NULL" | (_, c) <- colMapping ]
-                          <> "\n)"
+  Settings {..}    <- asks envSettings
+  tables           <- asks envTables
+  defaults         <- asks envTypeDefaults
+  let factTable    = fromJust $ findTable (factTableName fact) tables
+      colMapping   = dimColumnMapping settingDimPrefix fact dimTableName
+      selectCols   = [ coalesceColumn defaults (factTableName fact) col <> " AS " <> cName
+                       | (_, cName) <- colMapping
+                       , let col    = fromJust . findColumn cName $ tableColumns factTable ]
+      timeCol      = head [ cName | DimTime cName <- factColumns fact ]
+      baseSelectC  = "SELECT DISTINCT\n" <> joinColumnNames selectCols
+                       <> "\nFROM " <> factTableName fact
+      baseWhereCs  = [ "(\n"
+                         <> Text.intercalate "\nOR " [ c <> " IS NOT NULL" | (_, c) <- colMapping ]
+                         <> "\n)"
+                     , timeCol <> " <= ?"
+                     ]
+
       insertC selectC whereCs =
-        "INSERT INTO " <> dimTableName
+        "INSERT INTO "
+          <> suffixTableName popMode settingTableNameSuffixTemplate dimTableName
           <> " (\n" <> joinColumnNames (map fst colMapping) <> "\n) "
           <> "SELECT x.* FROM (\n"
           <> selectC <> "\nWHERE " <> Text.intercalate " AND\n" whereCs
           <> ") x"
-      timeCol         = head [ cName | DimTime cName <- factColumns fact ]
+
   return $ case popMode of
-    FullPopulation        -> insertC baseSelectC [baseWhereC]
+    FullPopulation        -> insertC baseSelectC baseWhereCs
     IncrementalPopulation ->
-      insertC baseSelectC [baseWhereC, timeCol <> " > ?", timeCol <> " <= ?"]
+      insertC baseSelectC (baseWhereCs ++ [ timeCol <> " > ?" ])
         <> "\nLEFT JOIN " <> dimTableName <> " ON\n"
         <> Text.intercalate " \nAND "
               [ fullColumnName dimTableName c1 <> " = " <> fullColumnName "x" c2

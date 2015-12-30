@@ -35,3 +35,8 @@ coalesceColumn defaults tName Column{..} =
       . find (\(k, _) -> k `Text.isPrefixOf` colType)
       . Map.toList
       $ defaults
+
+suffixTableName :: TablePopulationMode -> Text -> TableName -> TableName
+suffixTableName popMode suffix tableName = case popMode of
+  FullPopulation        -> tableName <> suffix
+  IncrementalPopulation -> tableName

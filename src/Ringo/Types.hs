@@ -83,6 +83,7 @@ data Settings = Settings
                 , settingFactsJSONFileName          :: !Text
                 , settingDimensionJSONFileName      :: !Text
                 , settingForeignKeyIdCoalesceValue  :: !Int
+                , settingTableNameSuffixTemplate    :: !Text
                 } deriving (Eq, Show)
 
 defSettings :: Settings
@@ -101,6 +102,7 @@ defSettings = Settings
               , settingFactsJSONFileName          = "facts.json"
               , settingDimensionJSONFileName      = "dimensions.json"
               , settingForeignKeyIdCoalesceValue  = -1
+              , settingTableNameSuffixTemplate    = "{{suff}}"
               }
 
 data ValidationError = MissingTable             !TableName

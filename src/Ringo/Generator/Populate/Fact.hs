@@ -53,8 +53,8 @@ data FactTablePopulateSelectSQL = FactTablePopulateSelectSQL
                                   , ftpsGroupByCols  :: ![Text]
                                   } deriving (Show, Eq)
 
-factTableUpdateSQL :: Fact -> Text -> FactTablePopulateSelectSQL -> Reader Env [Text]
-factTableUpdateSQL fact groupByColPrefix populateSelectSQL@FactTablePopulateSelectSQL {..} = do
+factTableUpdateSQL :: TablePopulationMode -> Fact -> Text -> FactTablePopulateSelectSQL -> Reader Env [Text]
+factTableUpdateSQL popMode fact groupByColPrefix populateSelectSQL@FactTablePopulateSelectSQL {..} = do
   Settings {..}         <- asks envSettings
   tables                <- asks envTables
   let countDistinctCols = [ col | col@(FactCountDistinct _ _) <- factColumns fact]
@@ -62,7 +62,8 @@ factTableUpdateSQL fact groupByColPrefix populateSelectSQL@FactTablePopulateSele
       fTable            = fromJust . findTable fTableName $ tables
       tablePKColName    = head [ cName | PrimaryKey cName <- tableConstraints fTable ]
       extFactTableName  =
-        extractedFactTableName settingFactPrefix settingFactInfix (factName fact) settingTimeUnit
+        suffixTableName popMode settingTableNameSuffixTemplate
+          $ extractedFactTableName settingFactPrefix settingFactInfix (factName fact) settingTimeUnit
 
   return . (\xs -> if null xs then xs else ilog2FunctionString : xs)
     $ for countDistinctCols $ \(FactCountDistinct scName cName) ->
@@ -163,8 +164,9 @@ factTablePopulateSQL popMode fact = do
           insertSQL             = if factTable `elem` tables -- existing dimension table
             then (if columnNullable dimFKIdColumn == Null then coalesceFKId else id)
                    $ fullColumnName factSourceTableName dimFKIdColName
-            else "SELECT " <> dimIdColName <> " FROM " <> tableName <> "\nWHERE "
-                  <> Text.intercalate "\n AND " dimLookupWhereClauses
+            else "SELECT " <> dimIdColName <> " FROM "
+                  <> suffixTableName popMode settingTableNameSuffixTemplate tableName <> " " <> tableName
+                  <> "\nWHERE " <> Text.intercalate "\n AND " dimLookupWhereClauses
         in (dimFKIdColName, coalesceFKId insertSQL, True)
 
       colMap              = [ (cName, (sql, groupByColPrefix <> cName), addToGroupBy)
@@ -178,17 +180,16 @@ factTablePopulateSQL popMode fact = do
 
       timeCol             = fullColumnName fTableName $ head [ cName | DimTime cName <- factColumns fact ]
 
-      extFactTableName    =
-        extractedFactTableName settingFactPrefix settingFactInfix (factName fact) settingTimeUnit
+      extFactTableName    = suffixTableName popMode settingTableNameSuffixTemplate
+        $ extractedFactTableName settingFactPrefix settingFactInfix (factName fact) settingTimeUnit
 
       populateSelectSQL   =
         FactTablePopulateSelectSQL
           { ftpsSelectCols   = map snd3 colMap
           , ftpsSelectTable  = fTableName
           , ftpsJoinClauses  = joinClauses
-          , ftpsWhereClauses = if popMode == IncrementalPopulation
-                                then [ timeCol <> " > ?", timeCol <> " <= ?" ]
-                                else []
+          , ftpsWhereClauses =
+              timeCol <> " <= ?" : [ timeCol <> " > ?" | popMode == IncrementalPopulation ]
           , ftpsGroupByCols  = map ((groupByColPrefix <>) . fst3) . filter thd3 $ colMap
           }
 
@@ -196,7 +197,7 @@ factTablePopulateSQL popMode fact = do
                               <> " (\n" <> Text.intercalate ",\n " (map fst3 colMap) <> "\n)\n"
                               <> toSelectSQL populateSelectSQL
 
-  updateSQLs <- factTableUpdateSQL fact groupByColPrefix populateSelectSQL
+  updateSQLs <- factTableUpdateSQL popMode fact groupByColPrefix populateSelectSQL
 
   return $ insertIntoSQL : updateSQLs
   where

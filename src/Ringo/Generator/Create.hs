@@ -1,5 +1,10 @@
 module Ringo.Generator.Create (tableDefnSQL, factTableDefnSQL) where
 
+#if MIN_VERSION_base(4,8,0)
+#else
+import Control.Applicative  ((<$>))
+#endif
+
 import Control.Monad.Reader (Reader, asks)
 import Data.Monoid          ((<>))
 import Data.Text            (Text)
@@ -9,29 +14,31 @@ import Ringo.Generator.Internal
 import Ringo.Types
 import Ringo.Utils
 
-tableDefnSQL :: Table -> [Text]
-tableDefnSQL Table {..} =
-  tableSQL : concatMap constraintDefnSQL tableConstraints
-  where
-    tableSQL = "CREATE TABLE " <> tableName <> " (\n"
-                 <> (joinColumnNames . map columnDefnSQL $ tableColumns)
-                 <> "\n)"
+tableDefnSQL :: Table -> Reader Env [Text]
+tableDefnSQL Table {..} = do
+  Settings {..} <- asks envSettings
+  let tabName = tableName <> settingTableNameSuffixTemplate
 
-    columnDefnSQL Column {..} =
-      columnName <> " " <> columnType <> " " <> nullableDefnSQL columnNullable
+      tableSQL = "CREATE TABLE " <> tabName <> " (\n"
+                   <> (joinColumnNames . map columnDefnSQL $ tableColumns)
+                   <> "\n)"
 
-    nullableDefnSQL Null    = "NULL"
-    nullableDefnSQL NotNull = "NOT NULL"
+      columnDefnSQL Column {..} =
+        columnName <> " " <> columnType <> " " <> nullableDefnSQL columnNullable
 
-    constraintDefnSQL constraint =
-      let alterTableSQL = "ALTER TABLE ONLY " <> tableName <> " ADD "
-      in case constraint of
-        PrimaryKey cName -> [ alterTableSQL <> "PRIMARY KEY (" <> cName <> ")" ]
-        ForeignKey oTableName cNamePairs ->
-          [ alterTableSQL <> "FOREIGN KEY (" <> joinColumnNames (map fst cNamePairs) <> ") REFERENCES "
-              <> oTableName <> " (" <> joinColumnNames (map snd cNamePairs) <> ")" ]
-        UniqueKey cNames -> ["CREATE UNIQUE INDEX ON " <> tableName <> " (" <> joinColumnNames cNames <> ")"]
+      nullableDefnSQL Null    = "NULL"
+      nullableDefnSQL NotNull = "NOT NULL"
 
+      constraintDefnSQL constraint =
+        let alterTableSQL = "ALTER TABLE ONLY " <> tabName <> " ADD "
+        in case constraint of
+          PrimaryKey cName -> [ alterTableSQL <> "PRIMARY KEY (" <> cName <> ")" ]
+          ForeignKey oTableName cNamePairs ->
+            [ alterTableSQL <> "FOREIGN KEY (" <> joinColumnNames (map fst cNamePairs) <> ") REFERENCES "
+                <> oTableName <> " (" <> joinColumnNames (map snd cNamePairs) <> ")" ]
+          UniqueKey cNames -> ["CREATE UNIQUE INDEX ON " <> tabName <> " (" <> joinColumnNames cNames <> ")"]
+
+  return $ tableSQL : concatMap constraintDefnSQL tableConstraints
 
 factTableDefnSQL :: Fact -> Table -> Reader Env [Text]
 factTableDefnSQL fact table = do
@@ -46,7 +53,8 @@ factTableDefnSQL fact table = do
       dimCols   = [ factDimFKIdColumnName settingDimPrefix settingDimTableIdColumnName tableName
                     | (_, Table {..}) <- allDims ]
 
-      indexSQLs = [ "CREATE INDEX ON " <> tableName table <> " USING btree (" <> col <> ")"
+      indexSQLs = [ "CREATE INDEX ON " <> tableName table <> settingTableNameSuffixTemplate
+                      <> " USING btree (" <> col <> ")"
                     | col <- factCols ++ dimCols ]
 
-  return $ tableDefnSQL table ++ indexSQLs
+  (++ indexSQLs) <$> tableDefnSQL table
