@@ -66,6 +66,11 @@ settingsParser = let Settings {..} = defSettings
      <*> minorOption "dimensions-json-file"
                      settingDimensionJSONFileName
                      "Name of the output dimensions json file"
+     <*> option auto (long "foreign-key-id-coalesce-val"
+                      <> hidden
+                      <> value settingForeignKeyIdCoalesceValue
+                      <> showDefault
+                      <> help "Value to coalease missing foriegn key ids to, in fact tables")
   where
     minorOption longDesc defValue helpTxt =
       Text.pack <$> strOption (long longDesc

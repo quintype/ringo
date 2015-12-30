@@ -46,12 +46,12 @@ $$
 LANGUAGE 'plpgsql' IMMUTABLE|]
 
 data FactTablePopulateSelectSQL = FactTablePopulateSelectSQL
-                                { ftpsSelectCols   :: ![(Text, Text)]
-                                , ftpsSelectTable  :: !Text
-                                , ftpsJoinClauses  :: ![Text]
-                                , ftpsWhereClauses :: ![Text]
-                                , ftpsGroupByCols  :: ![Text]
-                                } deriving (Show, Eq)
+                                  { ftpsSelectCols   :: ![(Text, Text)]
+                                  , ftpsSelectTable  :: !Text
+                                  , ftpsJoinClauses  :: ![Text]
+                                  , ftpsWhereClauses :: ![Text]
+                                  , ftpsGroupByCols  :: ![Text]
+                                  } deriving (Show, Eq)
 
 factTableUpdateSQL :: Fact -> Text -> FactTablePopulateSelectSQL -> Reader Env [Text]
 factTableUpdateSQL fact groupByColPrefix populateSelectSQL@FactTablePopulateSelectSQL {..} = do
@@ -115,6 +115,11 @@ factTablePopulateSQL popMode fact = do
   let fTableName     = factTableName fact
       fTable         = fromJust . findTable fTableName $ tables
       dimIdColName   = settingDimTableIdColumnName
+
+      coalesceFKId col =
+        if "coalesce" `Text.isPrefixOf` col
+          then col
+          else "coalesce((" <> col <> "), " <> Text.pack (show settingForeignKeyIdCoalesceValue) <> ")"
 
       timeUnitColumnInsertSQL cName =
         let colName = timeUnitColumnName dimIdColName cName settingTimeUnit
@@ -202,11 +207,6 @@ factTablePopulateSQL popMode fact = do
       . map (\(c1, c2) -> fullColumnName (tableName table) c1 <> " = " <> fullColumnName oTableName c2)
       <$> listToMaybe [ colPairs | ForeignKey tName colPairs <-  tableConstraints table
                                  , tName == oTableName ]
-
-    coalesceFKId col =
-      if "coalesce" `Text.isPrefixOf` col
-        then col
-        else "coalesce((" <> col <> "), -1)" -- TODO extract this out to settings
 
 toSelectSQL :: FactTablePopulateSelectSQL -> Text
 toSelectSQL FactTablePopulateSelectSQL {..} =
