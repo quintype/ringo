@@ -206,7 +206,7 @@ factTablePopulateSQL popMode fact = do
     coalesceFKId col =
       if "coalesce" `Text.isPrefixOf` col
         then col
-        else "coalesce((" <> col <> "), -1)"
+        else "coalesce((" <> col <> "), -1)" -- TODO extract this out to settings
 
 toSelectSQL :: FactTablePopulateSelectSQL -> Text
 toSelectSQL FactTablePopulateSelectSQL {..} =

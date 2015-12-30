@@ -13,15 +13,15 @@ tableDefnSQL :: Table -> [Text]
 tableDefnSQL Table {..} =
   tableSQL : concatMap constraintDefnSQL tableConstraints
   where
+    tableSQL = "CREATE TABLE " <> tableName <> " (\n"
+                 <> (joinColumnNames . map columnDefnSQL $ tableColumns)
+                 <> "\n)"
+
     columnDefnSQL Column {..} =
       columnName <> " " <> columnType <> " " <> nullableDefnSQL columnNullable
 
     nullableDefnSQL Null    = "NULL"
     nullableDefnSQL NotNull = "NOT NULL"
-
-    tableSQL = "CREATE TABLE " <> tableName <> " (\n"
-                 <> (joinColumnNames . map columnDefnSQL $ tableColumns)
-                 <> "\n)"
 
     constraintDefnSQL constraint =
       let alterTableSQL = "ALTER TABLE ONLY " <> tableName <> " ADD "

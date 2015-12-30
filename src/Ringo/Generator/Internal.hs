@@ -19,7 +19,8 @@ fullColumnName tName cName = tName <> "." <> cName
 dimColumnMapping :: Text -> Fact -> TableName -> [(ColumnName, ColumnName)]
 dimColumnMapping dimPrefix fact dimTableName =
   [ (dimColumnName dName cName, cName)
-    | DimVal dName cName <- factColumns fact , dimPrefix <> dName == dimTableName]
+    | DimVal dName cName <- factColumns fact
+    , dimPrefix <> dName == dimTableName ]
 
 coalesceColumn :: TypeDefaults -> TableName -> Column -> Text
 coalesceColumn defaults tName Column{..} =

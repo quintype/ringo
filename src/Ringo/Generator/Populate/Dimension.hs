@@ -12,9 +12,9 @@ import Data.Maybe           (fromJust)
 import Data.Monoid          ((<>))
 import Data.Text            (Text)
 
+import Ringo.Extractor.Internal
 import Ringo.Generator.Internal
 import Ringo.Types
-import Ringo.Utils
 
 dimensionTablePopulateSQL :: TablePopulationMode -> Fact -> TableName -> Reader Env Text
 dimensionTablePopulateSQL popMode fact dimTableName = do

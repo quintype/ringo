@@ -12,11 +12,19 @@ import Control.Monad.Reader (Reader, asks)
 import Data.Function        (on)
 import Data.Maybe           (mapMaybe, fromMaybe, fromJust, catMaybes)
 import Data.Monoid          ((<>))
-import Data.List            (nub, nubBy)
+import Data.List            (nub, nubBy, find)
 import Data.Text            (Text)
 
 import Ringo.Types
-import Ringo.Utils
+
+findTable :: TableName -> [Table] -> Maybe Table
+findTable tName = find ((== tName) . tableName)
+
+findFact :: TableName -> [Fact] -> Maybe Fact
+findFact fName = find ((== fName) . factName)
+
+findColumn :: ColumnName -> [Column] -> Maybe Column
+findColumn cName = find ((== cName) . columnName)
 
 dimColumnName :: Text -> ColumnName -> ColumnName
 dimColumnName dimName columnName =

@@ -12,10 +12,10 @@ import Control.Applicative ((<$>))
 #endif
 
 import Control.Monad.Reader (Reader, asks)
+import Data.Maybe           (isJust, fromJust)
 
-import Data.Maybe  (isJust, fromJust)
+import Ringo.Extractor.Internal
 import Ringo.Types
-import Ringo.Utils
 
 checkTableForCol :: Table -> ColumnName -> [ValidationError]
 checkTableForCol tab colName =
@@ -44,8 +44,8 @@ validateFact Fact {..} = do
   case findTable factTableName tables of
     Nothing    -> return [ MissingTable factTableName ]
     Just table -> do
-      tableVs    <- validateTable table
-      parentVs   <- concat <$> mapM checkFactParents factParentNames
+      tableVs           <- validateTable table
+      parentVs          <- concat <$> mapM checkFactParents factParentNames
       let colVs         = concatMap (checkColumn tables table) factColumns
           timeVs        = [ MissingTimeColumn factTableName
                             | null [ c | DimTime c <- factColumns ] ]
@@ -71,7 +71,7 @@ validateFact Fact {..} = do
         Just pFact -> validateFact pFact
 
     checkColumn tables table factCol =
-      maybe [] (checkTableForCol table) (factColumnName factCol)
+      maybe [] (checkTableForCol table) (factSourceColumnName factCol)
         ++ checkColumnTable tables factCol
 
     checkColumnTable tables factCol = case factCol of

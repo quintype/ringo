@@ -58,15 +58,15 @@ data FactColumn = DimTime           !ColumnName
                 | FactCountDistinct !(Maybe ColumnName) !ColumnName
                 deriving (Eq, Show)
 
-factColumnName :: FactColumn -> Maybe ColumnName
-factColumnName (DimTime cName)             = Just cName
-factColumnName (NoDimId cName)             = Just cName
-factColumnName (DimId _ cName)             = Just cName
-factColumnName (DimVal _ cName)            = Just cName
-factColumnName (FactCount cName _)         = cName
-factColumnName (FactSum cName _)           = Just cName
-factColumnName (FactAverage cName _)       = Just cName
-factColumnName (FactCountDistinct cName _) = cName
+factSourceColumnName :: FactColumn -> Maybe ColumnName
+factSourceColumnName (DimTime cName)             = Just cName
+factSourceColumnName (NoDimId cName)             = Just cName
+factSourceColumnName (DimId _ cName)             = Just cName
+factSourceColumnName (DimVal _ cName)            = Just cName
+factSourceColumnName (FactCount cName _)         = cName
+factSourceColumnName (FactSum cName _)           = Just cName
+factSourceColumnName (FactAverage cName _)       = Just cName
+factSourceColumnName (FactCountDistinct cName _) = cName
 
 data Settings = Settings
                 { settingDimPrefix                  :: !Text
