@@ -1,0 +1,3 @@
+[submodule "lib/hssqlppp"]
+	path = lib/hssqlppp
+	url = https://github.com/abhin4v/hssqlppp
