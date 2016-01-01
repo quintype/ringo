@@ -1,32 +1,59 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE BangPatterns #-}
 module Ringo.Types where
 
 import qualified Data.Text as Text
 
-import Data.Map  (Map)
-import Data.Text (Text)
+import Data.Map    (Map)
+import Data.Monoid ((<>))
+import Data.Text   (Text)
+
+showColNames :: [Text] -> String
+showColNames cols = Text.unpack $ "(" <> Text.intercalate ", " cols <> ")"
 
 type ColumnName = Text
 type ColumnType = Text
 type TableName  = Text
 
-data Nullable = Null | NotNull deriving (Eq, Enum, Show)
+data Nullable = Null | NotNull deriving (Eq, Enum)
+
+instance Show Nullable where
+  show Null    = "NULL"
+  show NotNull = "NOT NULL"
 
 data Column = Column
               { columnName     :: !ColumnName
               , columnType     :: !ColumnType
               , columnNullable :: !Nullable
-              } deriving (Eq, Show)
+              } deriving (Eq)
+
+instance Show Column where
+  show Column {..} = "Column "
+                       ++ Text.unpack columnName ++ " "
+                       ++ Text.unpack columnType ++ " "
+                       ++ show columnNullable
 
 data TableConstraint = PrimaryKey !ColumnName
                      | UniqueKey  ![ColumnName]
                      | ForeignKey !TableName ![(ColumnName, ColumnName)]
-                     deriving (Eq, Show)
+                     deriving (Eq)
+
+instance Show TableConstraint where
+  show (PrimaryKey col)          = "PrimaryKey " ++ Text.unpack col
+  show (UniqueKey cols)          = "UniqueKey " ++ showColNames cols
+  show (ForeignKey tName colMap) = "ForeignKey " ++ showColNames (map fst colMap) ++ " "
+                                     ++ Text.unpack tName ++  " " ++ showColNames (map snd colMap)
 
 data Table = Table
              { tableName        :: !TableName
              , tableColumns     :: ![Column]
              , tableConstraints :: ![TableConstraint]
-             } deriving (Eq, Show)
+             } deriving (Eq)
+
+instance Show Table where
+  show Table {..} =
+    unlines $ ("Table " ++ Text.unpack tableName) : (map show tableColumns) ++ (map show tableConstraints)
 
 data TimeUnit = Second | Minute | Hour | Day | Week
                 deriving (Eq, Enum, Show, Read)

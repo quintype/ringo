@@ -1,3 +1,6 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE CPP #-}
 module Ringo.InputParser (parseInput) where
 
 import qualified Data.Text as Text

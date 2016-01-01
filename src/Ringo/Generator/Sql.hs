@@ -3,7 +3,6 @@ module Ringo.Generator.Sql where
 import qualified Data.Text as Text
 import qualified Data.Text.Lazy as TL
 
-
 import Database.HsSqlPpp.Annotation
 import Database.HsSqlPpp.Dialect (postgresDialect)
 import Database.HsSqlPpp.Pretty

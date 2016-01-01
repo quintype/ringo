@@ -1,3 +1,6 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE CPP #-}
 module Ringo.Validator
        ( validateTable
        , validateFact

@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 module Ringo.Extractor
        ( extractDimensionTables
        , extractAllDimensionTables

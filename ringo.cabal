@@ -34,8 +34,6 @@ library
                        raw-strings-qq >=1.0 && <1.2,
                        hssqlppp       ==0.5.23
   ghc-options:         -Wall -fno-warn-unused-do-bind -funbox-strict-fields -fno-warn-orphans -O2
-  default-extensions:  OverloadedStrings, RecordWildCards, ScopedTypeVariables, BangPatterns,
-                       TupleSections, CPP, NamedFieldPuns
   default-language:    Haskell2010
 
 executable ringo
@@ -55,16 +53,16 @@ executable ringo
                        aeson                >=0.8     && <0.11,
                        ringo
   ghc-options:         -Wall -fno-warn-unused-do-bind -funbox-strict-fields -fno-warn-orphans -O2
-  default-extensions:  OverloadedStrings, RecordWildCards, ScopedTypeVariables, BangPatterns,
-                       TupleSections, CPP, NamedFieldPuns
   default-language:    Haskell2010
 
 test-suite ringo-test
   type:                exitcode-stdio-1.0
-  hs-source-dirs:      test
-  main-is:             Spec.hs
+  hs-source-dirs:      test, src
+  main-is:             doctests.hs
   build-depends:       base
                      , ringo
+                     , pretty-show >=1.6 && <1.7
+                     , doctest     >=0.9 && <0.11
   default-language:    Haskell2010
 
 source-repository head

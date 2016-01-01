@@ -1,3 +1,7 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE CPP #-}
 module Ringo.Extractor.Internal where
 
 import qualified Data.Map  as Map

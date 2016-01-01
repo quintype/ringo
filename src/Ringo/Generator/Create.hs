@@ -1,3 +1,6 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE CPP #-}
 module Ringo.Generator.Create (tableDefnSQL, factTableDefnSQL) where
 
 #if MIN_VERSION_base(4,8,0)

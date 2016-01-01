@@ -1,3 +1,6 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE CPP #-}
 module Ringo.Generator.Populate.Dimension (dimensionTablePopulateSQL) where
 
 import qualified Data.Text as Text
