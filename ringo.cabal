@@ -59,10 +59,13 @@ test-suite ringo-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test, src
   main-is:             doctests.hs
-  build-depends:       base
-                     , ringo
-                     , pretty-show >=1.6 && <1.7
-                     , doctest     >=0.9 && <0.11
+  if impl(ghc >= 7.10)
+    build-depends:       base
+                       , ringo
+                       , pretty-show >=1.6 && <1.7
+                       , doctest     >=0.9 && <0.11
+  else
+    buildable: False
   default-language:    Haskell2010
 
 source-repository head
