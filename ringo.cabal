@@ -22,6 +22,7 @@ library
                        Ringo.Validator,
                        Ringo.Extractor.Internal,
                        Ringo.Generator.Internal,
+                       Ringo.Generator.Sql,
                        Ringo.Generator.Create,
                        Ringo.Generator.Populate.Dimension,
                        Ringo.Generator.Populate.Fact,

@@ -5,43 +5,54 @@ module Ringo.Generator.Create (tableDefnSQL, factTableDefnSQL) where
 import Control.Applicative  ((<$>))
 #endif
 
-import Control.Monad.Reader (Reader, asks)
-import Data.Monoid          ((<>))
-import Data.Text            (Text)
+import Control.Monad.Reader     (Reader, asks)
+import Database.HsSqlPpp.Syntax ( Statement(..), RowConstraint(..), AlterTableAction(..)
+                                , AlterTableOperation(..), Constraint(..), Cascade(..)
+                                )
+import Data.Monoid              ((<>))
+import Data.Text                (Text)
 
 import Ringo.Extractor.Internal
-import Ringo.Generator.Internal
+import Ringo.Generator.Sql
 import Ringo.Types
 import Ringo.Utils
 
 tableDefnSQL :: Table -> Reader Env [Text]
-tableDefnSQL Table {..} = do
+tableDefnSQL table = map ppSQL <$> tableDefnSQL' table
+
+tableDefnSQL' :: Table -> Reader Env [Statement]
+tableDefnSQL' Table {..} = do
   Settings {..} <- asks envSettings
   let tabName = tableName <> settingTableNameSuffixTemplate
 
-      tableSQL = "CREATE TABLE " <> tabName <> " (\n"
-                   <> (joinColumnNames . map columnDefnSQL $ tableColumns)
-                   <> "\n)"
+      tableSQL = CreateTable ea (name tabName) (map columnDefnSQL tableColumns) [] Nothing
 
       columnDefnSQL Column {..} =
-        columnName <> " " <> columnType <> " " <> nullableDefnSQL columnNullable
+        att columnName columnType $ nullableDefnSQL columnNullable
 
-      nullableDefnSQL Null    = "NULL"
-      nullableDefnSQL NotNull = "NOT NULL"
+      nullableDefnSQL Null    = NullConstraint ea ""
+      nullableDefnSQL NotNull = NotNullConstraint ea ""
 
       constraintDefnSQL constraint =
-        let alterTableSQL = "ALTER TABLE ONLY " <> tabName <> " ADD "
-        in case constraint of
-          PrimaryKey cName -> [ alterTableSQL <> "PRIMARY KEY (" <> cName <> ")" ]
-          ForeignKey oTableName cNamePairs ->
-            [ alterTableSQL <> "FOREIGN KEY (" <> joinColumnNames (map fst cNamePairs) <> ") REFERENCES "
-                <> oTableName <> " (" <> joinColumnNames (map snd cNamePairs) <> ")" ]
-          UniqueKey cNames -> ["CREATE UNIQUE INDEX ON " <> tabName <> " (" <> joinColumnNames cNames <> ")"]
+        let constr = case constraint of
+              PrimaryKey cName -> PrimaryKeyConstraint ea "" [nmc cName]
+              ForeignKey oTableName cNamePairs ->
+                ReferenceConstraint ea "" (map (nmc . fst) cNamePairs)
+                  (name oTableName) (map (nmc . snd) cNamePairs) Restrict Restrict
+              UniqueKey cNames -> UniqueConstraint ea "" $ map nmc cNames
 
-  return $ tableSQL : concatMap constraintDefnSQL tableConstraints
+        in AlterTable ea (name tabName) $ AlterTableActions ea [AddConstraint ea constr]
+
+  return $ tableSQL : map constraintDefnSQL tableConstraints
 
 factTableDefnSQL :: Fact -> Table -> Reader Env [Text]
 factTableDefnSQL fact table = do
+  ds <- map ppSQL <$> tableDefnSQL' table
+  is <- map (\st -> ppSQL st <> ";\n") <$> factTableIndexSQL' fact table
+  return $ ds ++ is
+
+factTableIndexSQL' :: Fact -> Table -> Reader Env [Statement]
+factTableIndexSQL' fact table = do
   Settings {..} <- asks envSettings
   allDims       <- extractAllDimensionTables fact
 
@@ -53,8 +64,6 @@ factTableDefnSQL fact table = do
       dimCols   = [ factDimFKIdColumnName settingDimPrefix settingDimTableIdColumnName tableName
                     | (_, Table {..}) <- allDims ]
 
-      indexSQLs = [ "CREATE INDEX ON " <> tableName table <> settingTableNameSuffixTemplate
-                      <> " USING btree (" <> col <> ")"
-                    | col <- factCols ++ dimCols ]
+  return [ CreateIndexTSQL ea (nmc "") (name $ tableName table <> settingTableNameSuffixTemplate) [nmc col]
+           | col <- factCols ++ dimCols ]
 
-  (++ indexSQLs) <$> tableDefnSQL table
