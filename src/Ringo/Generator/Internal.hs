@@ -5,11 +5,13 @@ module Ringo.Generator.Internal where
 import qualified Data.Map as Map
 import qualified Data.Text as Text
 
+import Database.HsSqlPpp.Syntax (ScalarExpr)
 import Data.List   (find)
 import Data.Monoid ((<>))
 import Data.Text   (Text)
 
 import Ringo.Extractor.Internal
+import Ringo.Generator.Sql
 import Ringo.Types
 
 joinColumnNames :: [ColumnName] -> Text
@@ -25,12 +27,15 @@ dimColumnMapping dimPrefix fact dimTableName =
     , dimPrefix <> dName == dimTableName ]
 
 coalesceColumn :: TypeDefaults -> TableName -> Column -> Text
-coalesceColumn defaults tName Column{..} =
+coalesceColumn defaults tName = ppScalarExpr . coalesceColumn' defaults tName
+
+coalesceColumn' :: TypeDefaults -> TableName -> Column -> ScalarExpr
+coalesceColumn' defaults tName Column{..} =
   if columnNullable == Null
-    then "coalesce(" <> fqColName <> ", " <> defVal columnType <> ")"
+    then app "coalesce" [fqColName, num $ defVal columnType]
     else fqColName
   where
-    fqColName = fullColumnName tName columnName
+    fqColName = eqi tName columnName
 
     defVal colType =
       maybe (error $ "Default value not known for column type: " ++ Text.unpack colType) snd

@@ -56,7 +56,7 @@ writeFiles outputDir env@Env{..} = do
     dimTables  = [ (fact, extractDimensionTables env fact) | fact <- envFacts ]
     factTables = [ (fact, extractFactTable env fact)       | fact <- envFacts ]
 
-    dimTableDefnSQLs    = [ (Create, tableName table, unlines . map sqlStr $ tableDefnSQL env table)
+    dimTableDefnSQLs    = [ (Create, tableName table, unlines . map sqlStr $ dimensionTableDefnSQL env table)
                             | (_, tabs) <- dimTables
                             , table     <- tabs
                             , table `notElem` envTables ]

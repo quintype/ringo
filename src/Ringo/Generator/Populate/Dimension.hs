@@ -3,51 +3,58 @@
 {-# LANGUAGE CPP #-}
 module Ringo.Generator.Populate.Dimension (dimensionTablePopulateSQL) where
 
-import qualified Data.Text as Text
+#if MIN_VERSION_base(4,8,0)
+#else
+import Control.Applicative ((<$>))
+#endif
 
-import Control.Monad.Reader (Reader, asks)
-import Data.Maybe           (fromJust)
-import Data.Monoid          ((<>))
-import Data.Text            (Text)
+import Control.Monad.Reader     (Reader, asks)
+import Database.HsSqlPpp.Syntax (Statement, QueryExpr(..), Distinct(..), makeSelect, JoinType(..))
+import Data.Maybe               (fromJust)
+import Data.Text                (Text)
 
 import Ringo.Extractor.Internal
 import Ringo.Generator.Internal
+import Ringo.Generator.Sql
 import Ringo.Types
 
 dimensionTablePopulateSQL :: TablePopulationMode -> Fact -> TableName -> Reader Env Text
-dimensionTablePopulateSQL popMode fact dimTableName = do
+dimensionTablePopulateSQL popMode fact dimTableName =
+  ppSQL <$> dimensionTablePopulateSQL' popMode fact dimTableName
+
+dimensionTablePopulateSQL' :: TablePopulationMode -> Fact -> TableName -> Reader Env Statement
+dimensionTablePopulateSQL' popMode fact dimTableName = do
   Settings {..}    <- asks envSettings
   tables           <- asks envTables
   defaults         <- asks envTypeDefaults
   let factTable    = fromJust $ findTable (factTableName fact) tables
       colMapping   = dimColumnMapping settingDimPrefix fact dimTableName
-      selectCols   = [ coalesceColumn defaults (factTableName fact) col <> " AS " <> cName
+      selectCols   = [ flip sia (nmc cName) $ coalesceColumn' defaults (factTableName fact) col
                        | (_, cName) <- colMapping
                        , let col    = fromJust . findColumn cName $ tableColumns factTable ]
       timeCol      = head [ cName | DimTime cName <- factColumns fact ]
-      baseSelectC  = "SELECT DISTINCT\n" <> joinColumnNames selectCols
-                       <> "\nFROM " <> factTableName fact
-      baseWhereCs  = [ "(\n"
-                         <> Text.intercalate "\nOR " [ c <> " IS NOT NULL" | (_, c) <- colMapping ]
-                         <> "\n)"
-                     , timeCol <> " <= ?"
-                     ]
+      isNotNullC   = parens . foldBinop "or" . map (postop "isnotnull" . ei . snd) $ colMapping
+      selectWhereC = Just . foldBinop "and" $
+                       [ isNotNullC, binop "<=" (ei timeCol) placeholder ] ++
+                         [ binop ">" (ei timeCol) placeholder | popMode == IncrementalPopulation ]
+      selectC      = makeSelect
+                     { selDistinct   = Distinct
+                     , selSelectList = sl selectCols
+                     , selTref       = [tref $ factTableName fact]
+                     , selWhere      = selectWhereC
+                     }
 
-      insertC selectC whereCs =
-        "INSERT INTO "
-          <> suffixTableName popMode settingTableNameSuffixTemplate dimTableName
-          <> " (\n" <> joinColumnNames (map fst colMapping) <> "\n) "
-          <> "SELECT x.* FROM (\n"
-          <> selectC <> "\nWHERE " <> Text.intercalate " AND\n" whereCs
-          <> ") x"
+      iTableName   = suffixTableName popMode settingTableNameSuffixTemplate dimTableName
+      insertC      = insert iTableName (map fst colMapping) $ case popMode of
+        FullPopulation        -> selectC
+        IncrementalPopulation -> let alias = "x" in
+          makeSelect
+          { selSelectList = sl [si $ qstar alias]
+          , selTref       =
+              [ tjoin (subtrefa alias selectC) LeftOuter (tref dimTableName) . Just $
+                  foldBinop "and" [ binop "=" (eqi dimTableName c1) (eqi alias c2) | (c1, c2) <- colMapping ] ]
+          , selWhere      =
+              Just . foldBinop "and" . map (postop "isnull" . eqi dimTableName . fst) $ colMapping
+          }
 
-  return $ case popMode of
-    FullPopulation        -> insertC baseSelectC baseWhereCs
-    IncrementalPopulation ->
-      insertC baseSelectC (baseWhereCs ++ [ timeCol <> " > ?" ])
-        <> "\nLEFT JOIN " <> dimTableName <> " ON\n"
-        <> Text.intercalate " \nAND "
-              [ fullColumnName dimTableName c1 <> " = " <> fullColumnName "x" c2
-                | (c1, c2) <- colMapping ]
-        <> "\nWHERE " <> Text.intercalate " \nAND "
-                           [ fullColumnName dimTableName c <> " IS NULL" | (c, _) <- colMapping ]
+  return insertC

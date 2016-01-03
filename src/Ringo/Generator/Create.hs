@@ -31,7 +31,7 @@ tableDefnSQL' Table {..} = do
       tableSQL = CreateTable ea (name tabName) (map columnDefnSQL tableColumns) [] Nothing
 
       columnDefnSQL Column {..} =
-        att columnName columnType $ nullableDefnSQL columnNullable
+        attDef columnName columnType $ nullableDefnSQL columnNullable
 
       nullableDefnSQL Null    = NullConstraint ea ""
       nullableDefnSQL NotNull = NotNullConstraint ea ""

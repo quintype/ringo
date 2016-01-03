@@ -9,7 +9,7 @@ module Ringo
        , extractFactTable
        , extractDimensionTables
        , extractDependencies
-       , tableDefnSQL
+       , dimensionTableDefnSQL
        , factTableDefnSQL
        , dimensionTablePopulateSQL
        , factTablePopulateSQL
@@ -149,7 +149,7 @@ extractDependencies env = flip runReader env . E.extractDependencies
 -- |
 --
 -- >>> let storySessionDimTables = extractDimensionTables env sessionFact
--- >>> let sqls = map (tableDefnSQL env) storySessionDimTables
+-- >>> let sqls = map (dimensionTableDefnSQL env) storySessionDimTables
 -- >>> mapM_ (\sqls -> mapM_ (putStr . Text.unpack) sqls >> putStrLn "--------" ) sqls
 -- create table dim_geo (
 --   id serial not null,
@@ -189,8 +189,8 @@ extractDependencies env = flip runReader env . E.extractDependencies
 --                                        device);
 -- <BLANKLINE>
 -- --------
-tableDefnSQL :: Env -> Table -> [Text]
-tableDefnSQL env = flip runReader env . G.tableDefnSQL
+dimensionTableDefnSQL :: Env -> Table -> [Text]
+dimensionTableDefnSQL env = flip runReader env . G.tableDefnSQL
 
 -- |
 --
@@ -222,6 +222,129 @@ tableDefnSQL env = flip runReader env . G.tableDefnSQL
 factTableDefnSQL :: Env -> Fact -> Table -> [Text]
 factTableDefnSQL env fact = flip runReader env . G.factTableDefnSQL fact
 
+-- |
+--
+-- >>> let storySessionDimTableNames = map tableName $ extractDimensionTables env sessionFact
+-- >>> let sqls = map (dimensionTablePopulateSQL FullPopulation env sessionFact) storySessionDimTableNames
+-- >>> mapM_ (putStr . Text.unpack) sqls
+-- insert into dim_geo (country_name,
+--                      city_name,
+--                      continent_name,
+--                      most_specific_subdivision_name,
+--                      time_zone)
+-- select distinct
+--     coalesce(session_events.geo_country_name,'__UNKNOWN_VAL__') as geo_country_name,
+--     coalesce(session_events.geo_city_name,'__UNKNOWN_VAL__') as geo_city_name,
+--     coalesce(session_events.geo_continent_name,'__UNKNOWN_VAL__') as geo_continent_name,
+--     coalesce(session_events.geo_most_specific_subdivision_name,'__UNKNOWN_VAL__') as geo_most_specific_subdivision_name,
+--     coalesce(session_events.geo_time_zone,'__UNKNOWN_VAL__') as geo_time_zone
+--   from
+--     session_events
+--   where
+--     (geo_country_name is not null or geo_city_name is not null or geo_continent_name is not null or geo_most_specific_subdivision_name is not null or geo_time_zone is not null)
+--     and
+--     created_at <= ?
+-- ;
+-- <BLANKLINE>
+-- insert into dim_user_agent (browser_name, os, name, type, device)
+-- select distinct
+--     coalesce(session_events.browser_name,'__UNKNOWN_VAL__') as browser_name,
+--     coalesce(session_events.os,'__UNKNOWN_VAL__') as os,
+--     coalesce(session_events.user_agent_name,'__UNKNOWN_VAL__') as user_agent_name,
+--     coalesce(session_events.user_agent_type,'__UNKNOWN_VAL__') as user_agent_type,
+--     coalesce(session_events.user_agent_device,'__UNKNOWN_VAL__') as user_agent_device
+--   from
+--     session_events
+--   where
+--     (browser_name is not null or os is not null or user_agent_name is not null or user_agent_type is not null or user_agent_device is not null)
+--     and
+--     created_at <= ?
+-- ;
+-- <BLANKLINE>
+-- >>> let sqls = map (dimensionTablePopulateSQL IncrementalPopulation env sessionFact) storySessionDimTableNames
+-- >>> mapM_ (putStr . Text.unpack) sqls
+-- insert into dim_geo (country_name,
+--                      city_name,
+--                      continent_name,
+--                      most_specific_subdivision_name,
+--                      time_zone)
+-- select
+--     x.*
+--   from
+--     (select distinct
+--          coalesce(session_events.geo_country_name,'__UNKNOWN_VAL__') as geo_country_name,
+--          coalesce(session_events.geo_city_name,'__UNKNOWN_VAL__') as geo_city_name,
+--          coalesce(session_events.geo_continent_name,'__UNKNOWN_VAL__') as geo_continent_name,
+--          coalesce(session_events.geo_most_specific_subdivision_name,'__UNKNOWN_VAL__') as geo_most_specific_subdivision_name,
+--          coalesce(session_events.geo_time_zone,'__UNKNOWN_VAL__') as geo_time_zone
+--        from
+--          session_events
+--        where
+--          (geo_country_name is not null or geo_city_name is not null or geo_continent_name is not null or geo_most_specific_subdivision_name is not null or geo_time_zone is not null)
+--          and
+--          created_at <= ?
+--          and
+--          created_at > ?) as x
+--     left outer join
+--     dim_geo
+--       on dim_geo.country_name = x.geo_country_name
+--          and
+--          dim_geo.city_name = x.geo_city_name
+--          and
+--          dim_geo.continent_name = x.geo_continent_name
+--          and
+--          dim_geo.most_specific_subdivision_name = x.geo_most_specific_subdivision_name
+--          and
+--          dim_geo.time_zone = x.geo_time_zone
+--   where
+--     dim_geo.country_name is null and dim_geo.city_name is null
+--     and
+--     dim_geo.continent_name is null
+--     and
+--     dim_geo.most_specific_subdivision_name is null
+--     and
+--     dim_geo.time_zone is null
+-- ;
+-- <BLANKLINE>
+-- insert into dim_user_agent (browser_name, os, name, type, device)
+-- select
+--     x.*
+--   from
+--     (select distinct
+--          coalesce(session_events.browser_name,'__UNKNOWN_VAL__') as browser_name,
+--          coalesce(session_events.os,'__UNKNOWN_VAL__') as os,
+--          coalesce(session_events.user_agent_name,'__UNKNOWN_VAL__') as user_agent_name,
+--          coalesce(session_events.user_agent_type,'__UNKNOWN_VAL__') as user_agent_type,
+--          coalesce(session_events.user_agent_device,'__UNKNOWN_VAL__') as user_agent_device
+--        from
+--          session_events
+--        where
+--          (browser_name is not null or os is not null or user_agent_name is not null or user_agent_type is not null or user_agent_device is not null)
+--          and
+--          created_at <= ?
+--          and
+--          created_at > ?) as x
+--     left outer join
+--     dim_user_agent
+--       on dim_user_agent.browser_name = x.browser_name
+--          and
+--          dim_user_agent.os = x.os
+--          and
+--          dim_user_agent.name = x.user_agent_name
+--          and
+--          dim_user_agent.type = x.user_agent_type
+--          and
+--          dim_user_agent.device = x.user_agent_device
+--   where
+--     dim_user_agent.browser_name is null and dim_user_agent.os is null
+--     and
+--     dim_user_agent.name is null
+--     and
+--     dim_user_agent.type is null
+--     and
+--     dim_user_agent.device is null
+-- ;
+-- <BLANKLINE>
 dimensionTablePopulateSQL :: TablePopulationMode -> Env -> Fact -> TableName -> Text
 dimensionTablePopulateSQL popMode env fact =
   flip runReader env . G.dimensionTablePopulateSQL popMode fact
