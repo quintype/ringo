@@ -67,6 +67,7 @@ instance FromJSON FactColumn where
 instance FromJSON Fact where
   parseJSON (Object o) = Fact <$> o .: "name"
                               <*> o .: "tablename"
+                              <*> o .:? "persistent"  .!= True
                               <*> o .:? "parentfacts" .!= []
                               <*> o .: "columns"
   parseJSON o          = fail $ "Cannot parse fact: " ++ show o

@@ -42,10 +42,11 @@ timeUnitToSeconds Day    = 24 * timeUnitToSeconds Hour
 timeUnitToSeconds Week   = 7  * timeUnitToSeconds Day
 
 data Fact = Fact
-            { factName        :: !TableName
-            , factTableName   :: !TableName
-            , factParentNames :: ![TableName]
-            , factColumns     :: ![FactColumn]
+            { factName            :: !TableName
+            , factTableName       :: !TableName
+            , factTablePersistent :: !Bool
+            , factParentNames     :: ![TableName]
+            , factColumns         :: ![FactColumn]
             } deriving (Eq, Show)
 
 data FactColumn = DimTime           !ColumnName
