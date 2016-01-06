@@ -48,7 +48,7 @@ dimensionTableDefnSQL table@Table {..} = do
       tablePKColName = head [ cName | PrimaryKey cName <- tableConstraints ]
       nonPKColNames  = [ cName | Column cName _ _ <- tableColumns, cName /= tablePKColName ]
       indexSQLs      = [ "CREATE INDEX ON " <> tabName <> " (" <> cName <> ")"
-                         | cName <- nonPKColNames ]
+                         | cName <- nonPKColNames, length nonPKColNames > 1 ]
   (++ indexSQLs) <$> tableDefnSQL table
 
 factTableDefnSQL :: Fact -> Table -> Reader Env [Text]
