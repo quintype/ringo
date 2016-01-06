@@ -141,6 +141,10 @@ factTablePopulateSQL popMode fact = do
           [ (cName, "count(" <> maybe "*" (fullColumnName fTableName) scName <> ")", False) ]
         FactSum scName cName      ->
           [ (cName, "sum(" <> fullColumnName fTableName scName <> ")", False) ]
+        FactMax scName cName      ->
+          [ (cName, "max(" <> fullColumnName fTableName scName <> ")", False) ]
+        FactMin scName cName      ->
+          [ (cName, "min(" <> fullColumnName fTableName scName <> ")", False) ]
         FactAverage scName cName  ->
           [ ( cName <> settingAvgCountColumSuffix
             , "count(" <> fullColumnName fTableName scName <> ")"

@@ -37,6 +37,8 @@ extractFactTable fact = do
         TenantId cName            -> [ notNullSourceColumnCopy cName ]
         FactCount _ cName         -> [ Column cName countColType NotNull ]
         FactSum scName cName      -> [ notNullSourceColumnRename scName cName ]
+        FactMax scName cName      -> [ notNullSourceColumnRename scName cName ]
+        FactMin scName cName      -> [ notNullSourceColumnRename scName cName ]
         FactAverage scName cName  ->
           [ Column (cName <> settingAvgCountColumSuffix) countColType NotNull
           , notNullSourceColumnRename scName (cName <> settingAvgSumColumnSuffix)

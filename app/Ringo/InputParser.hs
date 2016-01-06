@@ -59,6 +59,8 @@ instance FromJSON FactColumn where
       "factsum"           -> FactSum           <$> o .: "sourcecolumn"  <*> o .: "column"
       "factaverage"       -> FactAverage       <$> o .: "sourcecolumn"  <*> o .: "column"
       "factcountdistinct" -> FactCountDistinct <$> o .:? "sourcecolumn" <*> o .: "column"
+      "factmax"           -> FactMax           <$> o .: "sourcecolumn"  <*> o .: "column"
+      "factmin"           -> FactMin           <$> o .: "sourcecolumn"  <*> o .: "column"
       _                   -> fail $ "Invalid fact column type: " ++ cType
   parseJSON o          = fail $ "Cannot parse fact column: " ++ show o
 
