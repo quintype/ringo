@@ -1,4 +1,4 @@
-module Ringo.Generator.Create (tableDefnSQL, factTableDefnSQL) where
+module Ringo.Generator.Create (dimensionTableDefnSQL, factTableDefnSQL) where
 
 #if MIN_VERSION_base(4,8,0)
 #else
@@ -39,6 +39,16 @@ tableDefnSQL Table {..} = do
           UniqueKey cNames -> ["CREATE UNIQUE INDEX ON " <> tabName <> " (" <> joinColumnNames cNames <> ")"]
 
   return $ tableSQL : concatMap constraintDefnSQL tableConstraints
+
+dimensionTableDefnSQL :: Table -> Reader Env [Text]
+dimensionTableDefnSQL table@Table {..} = do
+  Settings {..} <- asks envSettings
+  let tabName        = tableName <> settingTableNameSuffixTemplate
+      tablePKColName = head [ cName | PrimaryKey cName <- tableConstraints ]
+      nonPKColNames  = [ cName | Column cName _ _ <- tableColumns, cName /= tablePKColName ]
+      indexSQLs      = [ "CREATE INDEX ON " <> tabName <> " (" <> cName <> ")"
+                         | cName <- nonPKColNames ]
+  (++ indexSQLs) <$> tableDefnSQL table
 
 factTableDefnSQL :: Fact -> Table -> Reader Env [Text]
 factTableDefnSQL fact table = do

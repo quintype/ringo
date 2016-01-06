@@ -3,7 +3,7 @@ module Ringo
        , extractFactTable
        , extractDimensionTables
        , extractDependencies
-       , tableDefnSQL
+       , dimensionTableDefnSQL
        , factTableDefnSQL
        , dimensionTablePopulateSQL
        , factTablePopulateSQL
@@ -28,8 +28,8 @@ extractDimensionTables env = flip runReader env . E.extractDimensionTables
 extractDependencies :: Env -> Fact -> Dependencies
 extractDependencies env = flip runReader env . E.extractDependencies
 
-tableDefnSQL :: Env -> Table -> [Text]
-tableDefnSQL env = flip runReader env . G.tableDefnSQL
+dimensionTableDefnSQL :: Env -> Table -> [Text]
+dimensionTableDefnSQL env = flip runReader env . G.dimensionTableDefnSQL
 
 factTableDefnSQL :: Env -> Fact -> Table -> [Text]
 factTableDefnSQL env fact = flip runReader env . G.factTableDefnSQL fact
