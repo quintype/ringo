@@ -129,12 +129,14 @@ factTablePopulateSQL popMode fact = do
                 <> Text.pack (show $ timeUnitToSeconds settingTimeUnit)
            , True
            )
+      dimIdColumnInsertSQL cName =
+        let sCol = fromJust . findColumn cName $ tableColumns fTable
+        in (cName, coalesceColumn defaults fTableName sCol, True)
 
       factColMap = concatFor (factColumns fact) $ \col -> case col of
         DimTime cName             -> [ timeUnitColumnInsertSQL cName ]
-        NoDimId cName             ->
-          let sCol = fromJust . findColumn cName $ tableColumns fTable
-          in [ (cName, coalesceColumn defaults fTableName sCol, True) ]
+        NoDimId cName             -> [ dimIdColumnInsertSQL cName ]
+        TenantId cName            -> [ dimIdColumnInsertSQL cName ]
         FactCount scName cName    ->
           [ (cName, "count(" <> maybe "*" (fullColumnName fTableName) scName <> ")", False) ]
         FactSum scName cName      ->

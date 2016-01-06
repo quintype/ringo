@@ -50,6 +50,7 @@ data Fact = Fact
 
 data FactColumn = DimTime           !ColumnName
                 | NoDimId           !ColumnName
+                | TenantId          !ColumnName
                 | DimId             !TableName          !ColumnName
                 | DimVal            !TableName          !ColumnName
                 | FactCount         !(Maybe ColumnName) !ColumnName
@@ -61,6 +62,7 @@ data FactColumn = DimTime           !ColumnName
 factSourceColumnName :: FactColumn -> Maybe ColumnName
 factSourceColumnName (DimTime cName)             = Just cName
 factSourceColumnName (NoDimId cName)             = Just cName
+factSourceColumnName (TenantId cName)            = Just cName
 factSourceColumnName (DimId _ cName)             = Just cName
 factSourceColumnName (DimVal _ cName)            = Just cName
 factSourceColumnName (FactCount cName _)         = cName

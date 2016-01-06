@@ -56,7 +56,9 @@ validateFact Fact {..} = do
                             , columnNullable (fromJust col) == Null ]
           typeDefaultVs =
             [ MissingTypeDefault cType
-              | cName   <- [ c | DimVal _ c <- factColumns ] ++ [ c | NoDimId c <- factColumns ]
+              | cName   <- [ c | DimVal _ c <- factColumns ]
+                             ++ [ c | NoDimId c <- factColumns ]
+                             ++ [ c | TenantId c <- factColumns ]
               , let col = findColumn cName (tableColumns table)
               , isJust col
               , let cType = columnType $ fromJust col

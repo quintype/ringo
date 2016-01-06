@@ -6,6 +6,7 @@ import Control.Applicative  ((<$>))
 #endif
 
 import Control.Monad.Reader (Reader, asks)
+import Data.Maybe           (listToMaybe, maybeToList)
 import Data.Monoid          ((<>))
 import Data.Text            (Text)
 
@@ -17,7 +18,7 @@ import Ringo.Utils
 tableDefnSQL :: Table -> Reader Env [Text]
 tableDefnSQL Table {..} = do
   Settings {..} <- asks envSettings
-  let tabName = tableName <> settingTableNameSuffixTemplate
+  let tabName  = tableName <> settingTableNameSuffixTemplate
 
       tableSQL = "CREATE TABLE " <> tabName <> " (\n"
                    <> (joinColumnNames . map columnDefnSQL $ tableColumns)
@@ -55,16 +56,23 @@ factTableDefnSQL fact table = do
   Settings {..} <- asks envSettings
   allDims       <- extractAllDimensionTables fact
 
-  let factCols  = forMaybe (factColumns fact) $ \col -> case col of
-        DimTime cName -> Just $ timeUnitColumnName settingDimTableIdColumnName cName settingTimeUnit
-        NoDimId cName -> Just cName
-        _             -> Nothing
+  let dimTimeCol           = head [ cName | DimTime cName <- factColumns fact ]
+      tenantIdCol          = listToMaybe [ cName | TenantId cName <- factColumns fact ]
+
+      dimTimeColName cName = timeUnitColumnName settingDimTableIdColumnName cName settingTimeUnit
+
+      factCols  = forMaybe (factColumns fact) $ \col -> case col of
+        DimTime cName  -> Just $ dimTimeColName cName
+        NoDimId cName  -> Just cName
+        TenantId cName -> Just cName
+        _              -> Nothing
 
       dimCols   = [ factDimFKIdColumnName settingDimPrefix settingDimTableIdColumnName tableName
                     | (_, Table {..}) <- allDims ]
 
       indexSQLs = [ "CREATE INDEX ON " <> tableName table <> settingTableNameSuffixTemplate
                       <> " USING btree (" <> col <> ")"
-                    | col <- factCols ++ dimCols ]
+                    | col <- factCols ++ dimCols  ++ [ cName <> ", " <> dimTimeColName dimTimeCol
+                                                       | cName <- maybeToList tenantIdCol ] ]
 
   (++ indexSQLs) <$> tableDefnSQL table

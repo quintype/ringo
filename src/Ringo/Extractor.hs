@@ -24,21 +24,22 @@ extractFactTable fact = do
   tables        <- asks envTables
   let table     =  fromJust . findTable (factTableName fact) $ tables
 
-  let countColType             = settingFactCountColumnType
-      dimIdColName             = settingDimTableIdColumnName
-      sourceColumnType colName = columnType . fromJust . findColumn colName . tableColumns $ table
+  let countColType              = settingFactCountColumnType
+      dimIdColName              = settingDimTableIdColumnName
+      sourceColumn cName        = fromJust . findColumn cName . tableColumns $ table
+      notNullSourceColumnCopy cName          = (sourceColumn cName) { columnNullable = NotNull }
+      notNullSourceColumnRename scName cName = (notNullSourceColumnCopy scName) { columnName = cName }
 
       columns = concatFor (factColumns fact) $ \col -> case col of
         DimTime cName             ->
           [ Column (timeUnitColumnName dimIdColName cName settingTimeUnit) "bigint" NotNull ]
-        NoDimId cName             -> let
-            col' = fromJust . findColumn cName . tableColumns $ table
-          in [ col' { columnNullable = NotNull } ]
+        NoDimId cName             -> [ notNullSourceColumnCopy cName ]
+        TenantId cName            -> [ notNullSourceColumnCopy cName ]
         FactCount _ cName         -> [ Column cName countColType NotNull ]
-        FactSum scName cName      -> [ Column cName (sourceColumnType scName) NotNull ]
+        FactSum scName cName      -> [ notNullSourceColumnRename scName cName ]
         FactAverage scName cName  ->
           [ Column (cName <> settingAvgCountColumSuffix) countColType NotNull
-          , Column (cName <> settingAvgSumColumnSuffix) (sourceColumnType scName) NotNull
+          , notNullSourceColumnRename scName (cName <> settingAvgSumColumnSuffix)
           ]
         FactCountDistinct _ cName -> [ Column cName "json" NotNull ]
         _                         -> []
@@ -51,9 +52,10 @@ extractFactTable fact = do
       ukColNames =
         (++ map columnName fkColumns)
         . forMaybe (factColumns fact) $ \col -> case col of
-            DimTime cName -> Just (timeUnitColumnName dimIdColName cName settingTimeUnit)
-            NoDimId cName -> Just cName
-            _             -> Nothing
+            DimTime cName  -> Just (timeUnitColumnName dimIdColName cName settingTimeUnit)
+            NoDimId cName  -> Just cName
+            TenantId cName -> Just cName
+            _              -> Nothing
 
   return Table
          { tableName        =

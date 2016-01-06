@@ -52,6 +52,7 @@ instance FromJSON FactColumn where
     case cType of
       "dimtime"           -> DimTime           <$> o .: "column"
       "nodimid"           -> NoDimId           <$> o .: "column"
+      "tenantid"          -> TenantId          <$> o .: "column"
       "dimid"             -> DimId             <$> o .: "table"         <*> o .: "column"
       "dimval"            -> DimVal            <$> o .: "table"         <*> o .: "column"
       "factcount"         -> FactCount         <$> o .:? "sourcecolumn" <*> o .: "column"
