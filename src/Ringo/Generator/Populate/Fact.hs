@@ -195,7 +195,7 @@ factTablePopulateSQL popMode fact = do
           , ftpsSelectTable  = fTableName
           , ftpsJoinClauses  = joinClauses
           , ftpsWhereClauses =
-              timeCol <> " <= ?" : [ timeCol <> " > ?" | popMode == IncrementalPopulation ]
+              timeCol <> " < ?" : [ timeCol <> " >= ?" | popMode == IncrementalPopulation ]
           , ftpsGroupByCols  = map ((groupByColPrefix <>) . fst3) . filter thd3 $ colMap
           }
 

@@ -32,7 +32,7 @@ dimensionTablePopulateSQL popMode fact dimTableName = do
       baseWhereCs  = [ "(\n"
                          <> Text.intercalate "\nOR " [ c <> " IS NOT NULL" | (_, c) <- colMapping ]
                          <> "\n)"
-                     , timeCol <> " <= ?"
+                     , timeCol <> " < ?"
                      ]
 
       insertC selectC whereCs =
@@ -46,7 +46,7 @@ dimensionTablePopulateSQL popMode fact dimTableName = do
   return $ case popMode of
     FullPopulation        -> insertC baseSelectC baseWhereCs
     IncrementalPopulation ->
-      insertC baseSelectC (baseWhereCs ++ [ timeCol <> " > ?" ])
+      insertC baseSelectC (baseWhereCs ++ [ timeCol <> " >= ?" ])
         <> "\nLEFT JOIN " <> dimTableName <> " ON\n"
         <> Text.intercalate " \nAND "
               [ fullColumnName dimTableName c1 <> " = " <> fullColumnName "x" c2
