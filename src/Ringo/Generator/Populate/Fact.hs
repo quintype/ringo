@@ -134,16 +134,22 @@ factTablePopulateSQL popMode fact = do
                 <> Text.pack (show $ timeUnitToSeconds settingTimeUnit)
            , True
            )
+      dimIdColumnInsertSQL cName =
+        let sCol = fromJust . findColumn cName $ tableColumns fTable
+        in (cName, coalesceColumn defaults fTableName sCol, True)
 
       factColMap = concatFor (factColumns fact) $ \col -> case col of
         DimTime cName             -> [ timeUnitColumnInsertSQL cName ]
-        NoDimId cName             ->
-          let sCol = fromJust . findColumn cName $ tableColumns fTable
-          in [ (cName, coalesceColumn defaults fTableName sCol, True) ]
+        NoDimId cName             -> [ dimIdColumnInsertSQL cName ]
+        TenantId cName            -> [ dimIdColumnInsertSQL cName ]
         FactCount scName cName    ->
           [ (cName, "count(" <> maybe "*" (fullColumnName fTableName) scName <> ")", False) ]
         FactSum scName cName      ->
           [ (cName, "sum(" <> fullColumnName fTableName scName <> ")", False) ]
+        FactMax scName cName      ->
+          [ (cName, "max(" <> fullColumnName fTableName scName <> ")", False) ]
+        FactMin scName cName      ->
+          [ (cName, "min(" <> fullColumnName fTableName scName <> ")", False) ]
         FactAverage scName cName  ->
           [ ( cName <> settingAvgCountColumSuffix
             , "count(" <> fullColumnName fTableName scName <> ")"
@@ -194,7 +200,7 @@ factTablePopulateSQL popMode fact = do
           , ftpsSelectTable  = fTableName
           , ftpsJoinClauses  = joinClauses
           , ftpsWhereClauses =
-              timeCol <> " <= ?" : [ timeCol <> " > ?" | popMode == IncrementalPopulation ]
+              timeCol <> " < ?" : [ timeCol <> " >= ?" | popMode == IncrementalPopulation ]
           , ftpsGroupByCols  = map ((groupByColPrefix <>) . fst3) . filter thd3 $ colMap
           }
 

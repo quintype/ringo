@@ -35,8 +35,8 @@ dimensionTablePopulateSQL' popMode fact dimTableName = do
       timeCol      = head [ cName | DimTime cName <- factColumns fact ]
       isNotNullC   = parens . foldBinop "or" . map (postop "isnotnull" . ei . snd) $ colMapping
       selectWhereC = Just . foldBinop "and" $
-                       [ isNotNullC, binop "<=" (ei timeCol) placeholder ] ++
-                         [ binop ">" (ei timeCol) placeholder | popMode == IncrementalPopulation ]
+                       [ isNotNullC, binop "<" (ei timeCol) placeholder ] ++
+                         [ binop ">=" (ei timeCol) placeholder | popMode == IncrementalPopulation ]
       selectC      = makeSelect
                      { selDistinct   = Distinct
                      , selSelectList = sl selectCols

@@ -1,17 +1,17 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE CPP #-}
-module Ringo.Generator.Create (tableDefnSQL, factTableDefnSQL) where
+module Ringo.Generator.Create (dimensionTableDefnSQL, factTableDefnSQL) where
 
 #if MIN_VERSION_base(4,8,0)
 #else
-import Control.Applicative  ((<$>))
+import Control.Applicative ((<$>))
 #endif
 
 import Control.Monad.Reader     (Reader, asks)
 import Database.HsSqlPpp.Syntax ( Statement(..), RowConstraint(..), AlterTableAction(..)
-                                , AlterTableOperation(..), Constraint(..), Cascade(..)
-                                )
+                                , AlterTableOperation(..), Constraint(..), Cascade(..) )
+import Data.Maybe               (listToMaybe, maybeToList)
 import Data.Monoid              ((<>))
 import Data.Text                (Text)
 
@@ -20,13 +20,10 @@ import Ringo.Generator.Sql
 import Ringo.Types
 import Ringo.Utils
 
-tableDefnSQL :: Table -> Reader Env [Text]
-tableDefnSQL table = map ppSQL <$> tableDefnSQL' table
-
-tableDefnSQL' :: Table -> Reader Env [Statement]
-tableDefnSQL' Table {..} = do
+tableDefnStmts :: Table -> Reader Env [Statement]
+tableDefnStmts Table {..} = do
   Settings {..} <- asks envSettings
-  let tabName = tableName <> settingTableNameSuffixTemplate
+  let tabName  = tableName <> settingTableNameSuffixTemplate
 
       tableSQL = CreateTable ea (name tabName) (map columnDefnSQL tableColumns) [] Nothing
 
@@ -48,25 +45,47 @@ tableDefnSQL' Table {..} = do
 
   return $ tableSQL : map constraintDefnSQL tableConstraints
 
-factTableDefnSQL :: Fact -> Table -> Reader Env [Text]
-factTableDefnSQL fact table = do
-  ds <- map ppSQL <$> tableDefnSQL' table
-  is <- map (\st -> ppSQL st <> ";\n") <$> factTableIndexSQL' fact table
+tableDefnSQL :: Table -> (Table -> Reader Env [Statement]) -> Reader Env [Text]
+tableDefnSQL table indexFn = do
+  ds <- map ppSQL <$> tableDefnStmts table
+  is <- map (\st -> ppSQL st <> ";\n") <$> indexFn table
   return $ ds ++ is
 
-factTableIndexSQL' :: Fact -> Table -> Reader Env [Statement]
-factTableIndexSQL' fact table = do
+dimensionTableDefnSQL :: Table -> Reader Env [Text]
+dimensionTableDefnSQL table = tableDefnSQL table dimensionTableIndexStmts
+
+dimensionTableIndexStmts :: Table -> Reader Env [Statement]
+dimensionTableIndexStmts Table {..} = do
+  Settings {..} <- asks envSettings
+  let tabName        = tableName <> settingTableNameSuffixTemplate
+      tablePKColName = head [ cName | PrimaryKey cName <- tableConstraints ]
+      nonPKColNames  = [ cName | Column cName _ _ <- tableColumns, cName /= tablePKColName ]
+
+  return [ CreateIndexTSQL ea (nmc "") (name tabName) [nmc cName]
+           | cName <- nonPKColNames, length nonPKColNames > 1 ]
+
+factTableDefnSQL :: Fact -> Table -> Reader Env [Text]
+factTableDefnSQL fact table = tableDefnSQL table (factTableIndexStmts fact)
+
+factTableIndexStmts :: Fact -> Table -> Reader Env [Statement]
+factTableIndexStmts fact table = do
   Settings {..} <- asks envSettings
   allDims       <- extractAllDimensionTables fact
 
-  let factCols  = forMaybe (factColumns fact) $ \col -> case col of
-        DimTime cName -> Just $ timeUnitColumnName settingDimTableIdColumnName cName settingTimeUnit
-        NoDimId cName -> Just cName
-        _             -> Nothing
+  let dimTimeCol           = head [ cName | DimTime cName <- factColumns fact ]
+      tenantIdCol          = listToMaybe [ cName | TenantId cName <- factColumns fact ]
+      tabName              = tableName table <> settingTableNameSuffixTemplate
+      dimTimeColName cName = timeUnitColumnName settingDimTableIdColumnName cName settingTimeUnit
 
-      dimCols   = [ factDimFKIdColumnName settingDimPrefix settingDimTableIdColumnName tableName
-                    | (_, Table {..}) <- allDims ]
+      factCols = forMaybe (factColumns fact) $ \col -> case col of
+        DimTime cName  -> Just [dimTimeColName cName]
+        NoDimId cName  -> Just [cName]
+        TenantId cName -> Just [cName]
+        _              -> Nothing
 
-  return [ CreateIndexTSQL ea (nmc "") (name $ tableName table <> settingTableNameSuffixTemplate) [nmc col]
-           | col <- factCols ++ dimCols ]
+      dimCols  = [ [factDimFKIdColumnName settingDimPrefix settingDimTableIdColumnName tableName]
+                   | (_, Table {..}) <- allDims ]
 
+  return [ CreateIndexTSQL ea (nmc "") (name $ tabName) (map nmc cols)
+           | cols <- factCols ++ dimCols ++ [ [cName, dimTimeColName dimTimeCol]
+                                                       | cName <- maybeToList tenantIdCol ] ]

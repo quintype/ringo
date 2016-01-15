@@ -1,5 +1,5 @@
 module Ringo.Generator
-       ( tableDefnSQL
+       ( dimensionTableDefnSQL
        , factTableDefnSQL
        , dimensionTablePopulateSQL
        , factTablePopulateSQL

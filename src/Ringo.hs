@@ -33,8 +33,8 @@ import qualified Ringo.Validator as V
 -- >>> import Text.Show.Pretty
 -- >>> :{
 --let sessionEventsTable =
---      Table { tableName = "session_events"
---            , tableColumns =
+--      Table { tableName        = "session_events"
+--            , tableColumns     =
 --              [ Column "id" "uuid"                                                   NotNull
 --              , Column "created_at" "timestamp without time zone"                    Null
 --              , Column "member_id" "integer"                                         Null
@@ -55,14 +55,14 @@ import qualified Ringo.Validator as V
 --              , Column "user_agent_version" "character varying(100)"                 Null
 --              , Column "user_agent_device" "character varying(15)"                   Null
 --              ]
---            , tableConstraints =
---              [ PrimaryKey "id" ]
+--            , tableConstraints = [ PrimaryKey "id" ]
 --            }
 --    sessionFact =
---      Fact { factName = "session"
---           , factTableName = "session_events"
---           , factParentNames = []
---           , factColumns =
+--      Fact { factName            = "session"
+--           , factTableName       = "session_events"
+--           , factTablePersistent = True
+--           , factParentNames     = []
+--           , factColumns         =
 --             [ DimTime "created_at"
 --             , NoDimId "publisher_id"
 --             , DimVal "user_agent" "browser_name"
@@ -78,8 +78,8 @@ import qualified Ringo.Validator as V
 --             , FactCount Nothing "session_count"
 --             ]
 --           }
---    tables = [sessionEventsTable]
---    facts = [sessionFact]
+--    tables       = [sessionEventsTable]
+--    facts        = [sessionFact]
 --    typeDefaults = Map.fromList [ ("integer", "-1")
 --                                , ("timestamp", "'00-00-00 00:00:00'")
 --                                , ("character", "'__UNKNOWN_VAL__'")
@@ -89,8 +89,8 @@ import qualified Ringo.Validator as V
 --                                , ("numeric", "-1")
 --                                , ("text", "'__UNKNOWN_VAL__'")
 --                                ]
---    settings = defSettings { settingTableNameSuffixTemplate = "" }
---    env = Env tables facts settings typeDefaults
+--    settings     = defSettings { settingTableNameSuffixTemplate = "" }
+--    env          = Env tables facts settings typeDefaults
 -- :}
 
 -- |
@@ -169,6 +169,16 @@ extractDependencies env = flip runReader env . E.extractDependencies
 --                                 most_specific_subdivision_name,
 --                                 time_zone);
 -- <BLANKLINE>
+-- create index  on dim_geo (country_name)
+-- ;
+-- create index  on dim_geo (city_name)
+-- ;
+-- create index  on dim_geo (continent_name)
+-- ;
+-- create index  on dim_geo (most_specific_subdivision_name)
+-- ;
+-- create index  on dim_geo (time_zone)
+-- ;
 -- --------
 -- create table dim_user_agent (
 --   id serial not null,
@@ -188,9 +198,19 @@ extractDependencies env = flip runReader env . E.extractDependencies
 --                                        type,
 --                                        device);
 -- <BLANKLINE>
+-- create index  on dim_user_agent (browser_name)
+-- ;
+-- create index  on dim_user_agent (os)
+-- ;
+-- create index  on dim_user_agent (name)
+-- ;
+-- create index  on dim_user_agent (type)
+-- ;
+-- create index  on dim_user_agent (device)
+-- ;
 -- --------
 dimensionTableDefnSQL :: Env -> Table -> [Text]
-dimensionTableDefnSQL env = flip runReader env . G.tableDefnSQL
+dimensionTableDefnSQL env = flip runReader env . G.dimensionTableDefnSQL
 
 -- |
 --
@@ -243,7 +263,7 @@ factTableDefnSQL env fact = flip runReader env . G.factTableDefnSQL fact
 --   where
 --     (geo_country_name is not null or geo_city_name is not null or geo_continent_name is not null or geo_most_specific_subdivision_name is not null or geo_time_zone is not null)
 --     and
---     created_at <= ?
+--     created_at < ?
 -- ;
 -- <BLANKLINE>
 -- insert into dim_user_agent (browser_name, os, name, type, device)
@@ -258,7 +278,7 @@ factTableDefnSQL env fact = flip runReader env . G.factTableDefnSQL fact
 --   where
 --     (browser_name is not null or os is not null or user_agent_name is not null or user_agent_type is not null or user_agent_device is not null)
 --     and
---     created_at <= ?
+--     created_at < ?
 -- ;
 -- <BLANKLINE>
 -- >>> let sqls = map (dimensionTablePopulateSQL IncrementalPopulation env sessionFact) storySessionDimTableNames
@@ -282,9 +302,9 @@ factTableDefnSQL env fact = flip runReader env . G.factTableDefnSQL fact
 --        where
 --          (geo_country_name is not null or geo_city_name is not null or geo_continent_name is not null or geo_most_specific_subdivision_name is not null or geo_time_zone is not null)
 --          and
---          created_at <= ?
+--          created_at < ?
 --          and
---          created_at > ?) as x
+--          created_at >= ?) as x
 --     left outer join
 --     dim_geo
 --       on dim_geo.country_name = x.geo_country_name
@@ -321,9 +341,9 @@ factTableDefnSQL env fact = flip runReader env . G.factTableDefnSQL fact
 --        where
 --          (browser_name is not null or os is not null or user_agent_name is not null or user_agent_type is not null or user_agent_device is not null)
 --          and
---          created_at <= ?
+--          created_at < ?
 --          and
---          created_at > ?) as x
+--          created_at >= ?) as x
 --     left outer join
 --     dim_user_agent
 --       on dim_user_agent.browser_name = x.browser_name

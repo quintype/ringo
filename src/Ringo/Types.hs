@@ -69,31 +69,38 @@ timeUnitToSeconds Day    = 24 * timeUnitToSeconds Hour
 timeUnitToSeconds Week   = 7  * timeUnitToSeconds Day
 
 data Fact = Fact
-            { factName        :: !TableName
-            , factTableName   :: !TableName
-            , factParentNames :: ![TableName]
-            , factColumns     :: ![FactColumn]
+            { factName            :: !TableName
+            , factTableName       :: !TableName
+            , factTablePersistent :: !Bool
+            , factParentNames     :: ![TableName]
+            , factColumns         :: ![FactColumn]
             } deriving (Eq, Show)
 
 data FactColumn = DimTime           !ColumnName
                 | NoDimId           !ColumnName
+                | TenantId          !ColumnName
                 | DimId             !TableName          !ColumnName
                 | DimVal            !TableName          !ColumnName
                 | FactCount         !(Maybe ColumnName) !ColumnName
                 | FactSum           !ColumnName         !ColumnName
                 | FactAverage       !ColumnName         !ColumnName
                 | FactCountDistinct !(Maybe ColumnName) !ColumnName
+                | FactMax           !ColumnName         !ColumnName
+                | FactMin           !ColumnName         !ColumnName
                 deriving (Eq, Show)
 
 factSourceColumnName :: FactColumn -> Maybe ColumnName
 factSourceColumnName (DimTime cName)             = Just cName
 factSourceColumnName (NoDimId cName)             = Just cName
+factSourceColumnName (TenantId cName)            = Just cName
 factSourceColumnName (DimId _ cName)             = Just cName
 factSourceColumnName (DimVal _ cName)            = Just cName
 factSourceColumnName (FactCount cName _)         = cName
 factSourceColumnName (FactSum cName _)           = Just cName
 factSourceColumnName (FactAverage cName _)       = Just cName
 factSourceColumnName (FactCountDistinct cName _) = cName
+factSourceColumnName (FactMax cName _)           = Just cName
+factSourceColumnName (FactMin cName _)           = Just cName
 
 data Settings = Settings
                 { settingDimPrefix                  :: !Text
