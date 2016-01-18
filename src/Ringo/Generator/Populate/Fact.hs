@@ -125,8 +125,8 @@ factTablePopulateSQL popMode fact = do
       timeUnitColumnInsertSQL cName =
         let colName = timeUnitColumnName dimIdColName cName settingTimeUnit
         in ( colName
-           , "extract(epoch from " <> fullColumnName fTableName cName <> ")::bigint/"
-                <> Text.pack (show $ timeUnitToSeconds settingTimeUnit)
+           , "floor(extract(epoch from " <> fullColumnName fTableName cName <> ")/"
+                <> Text.pack (show $ timeUnitToSeconds settingTimeUnit) <> ")::bigint"
            , True
            )
       dimIdColumnInsertSQL cName =
