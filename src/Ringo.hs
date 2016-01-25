@@ -36,7 +36,7 @@ import qualified Ringo.Validator as V
 --      Table { tableName        = "session_events"
 --            , tableColumns     =
 --              [ Column "id" "uuid"                                                   NotNull
---              , Column "created_at" "timestamp without time zone"                    Null
+--              , Column "created_at" "timestamp without time zone"                    NotNull
 --              , Column "member_id" "integer"                                         Null
 --              , Column "publisher_id" "integer"                                      NotNull
 --              , Column "user_agent" "character varying(1024)"                        Null
@@ -369,12 +369,122 @@ dimensionTablePopulateSQL :: TablePopulationMode -> Env -> Fact -> TableName -> 
 dimensionTablePopulateSQL popMode env fact =
   flip runReader env . G.dimensionTablePopulateSQL popMode fact
 
+-- |
+--
+-- >>> let sqls = factTablePopulateSQL FullPopulation env sessionFact
+-- >>> mapM_ (putStr . Text.unpack) sqls
+-- insert into fact_session_by_minute (created_at_minute_id,
+--                                     publisher_id,
+--                                     session_count,
+--                                     geo_id,
+--                                     user_agent_id)
+-- select
+--     cast(floor(extract(epoch from session_events.created_at) / 60) as bigint) as xxff_created_at_minute_id,
+--     session_events.publisher_id as xxff_publisher_id,
+--     count(*) as xxff_session_count,
+--     coalesce((select
+--                   id
+--                 from
+--                   dim_geo as dim_geo
+--                 where
+--                   dim_geo.country_name = coalesce(session_events.geo_country_name,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_geo.city_name = coalesce(session_events.geo_city_name,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_geo.continent_name = coalesce(session_events.geo_continent_name,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_geo.most_specific_subdivision_name = coalesce(session_events.geo_most_specific_subdivision_name,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_geo.time_zone = coalesce(session_events.geo_time_zone,'__UNKNOWN_VAL__')),-1) as xxff_geo_id,
+--     coalesce((select
+--                   id
+--                 from
+--                   dim_user_agent as dim_user_agent
+--                 where
+--                   dim_user_agent.browser_name = coalesce(session_events.browser_name,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_user_agent.os = coalesce(session_events.os,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_user_agent.name = coalesce(session_events.user_agent_name,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_user_agent.type = coalesce(session_events.user_agent_type,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_user_agent.device = coalesce(session_events.user_agent_device,'__UNKNOWN_VAL__')),-1) as xxff_user_agent_id
+--   from
+--     session_events
+--   where
+--     session_events.created_at < ?
+--   group by
+--     xxff_created_at_minute_id,
+--     xxff_publisher_id,
+--     xxff_geo_id,
+--     xxff_user_agent_id
+-- ;
+-- <BLANKLINE>
+-- >>> let sqls = factTablePopulateSQL IncrementalPopulation env sessionFact
+-- >>> mapM_ (putStr . Text.unpack) sqls
+-- insert into fact_session_by_minute (created_at_minute_id,
+--                                     publisher_id,
+--                                     session_count,
+--                                     geo_id,
+--                                     user_agent_id)
+-- select
+--     cast(floor(extract(epoch from session_events.created_at) / 60) as bigint) as xxff_created_at_minute_id,
+--     session_events.publisher_id as xxff_publisher_id,
+--     count(*) as xxff_session_count,
+--     coalesce((select
+--                   id
+--                 from
+--                   dim_geo as dim_geo
+--                 where
+--                   dim_geo.country_name = coalesce(session_events.geo_country_name,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_geo.city_name = coalesce(session_events.geo_city_name,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_geo.continent_name = coalesce(session_events.geo_continent_name,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_geo.most_specific_subdivision_name = coalesce(session_events.geo_most_specific_subdivision_name,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_geo.time_zone = coalesce(session_events.geo_time_zone,'__UNKNOWN_VAL__')),-1) as xxff_geo_id,
+--     coalesce((select
+--                   id
+--                 from
+--                   dim_user_agent as dim_user_agent
+--                 where
+--                   dim_user_agent.browser_name = coalesce(session_events.browser_name,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_user_agent.os = coalesce(session_events.os,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_user_agent.name = coalesce(session_events.user_agent_name,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_user_agent.type = coalesce(session_events.user_agent_type,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_user_agent.device = coalesce(session_events.user_agent_device,'__UNKNOWN_VAL__')),-1) as xxff_user_agent_id
+--   from
+--     session_events
+--   where
+--     session_events.created_at < ? and session_events.created_at >= ?
+--   group by
+--     xxff_created_at_minute_id,
+--     xxff_publisher_id,
+--     xxff_geo_id,
+--     xxff_user_agent_id
+-- ;
+-- <BLANKLINE>
 factTablePopulateSQL :: TablePopulationMode -> Env -> Fact -> [Text]
 factTablePopulateSQL popMode env =
   flip runReader env . G.factTablePopulateSQL popMode
 
+-- |
+--
+-- >>> validateTable env sessionEventsTable
+-- []
 validateTable :: Env -> Table -> [ValidationError]
 validateTable env = flip runReader env . V.validateTable
 
+-- |
+--
+-- >>> validateFact env sessionFact
+-- []
 validateFact :: Env -> Fact -> [ValidationError]
 validateFact env = flip runReader env . V.validateFact
