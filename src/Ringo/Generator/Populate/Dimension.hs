@@ -20,16 +20,16 @@ import Ringo.Types
 
 dimensionTablePopulateSQL :: TablePopulationMode -> Fact -> TableName -> Reader Env Text
 dimensionTablePopulateSQL popMode fact dimTableName =
-  ppSQL <$> dimensionTablePopulateSQL' popMode fact dimTableName
+  ppStatement <$> dimensionTablePopulateStmt popMode fact dimTableName
 
-dimensionTablePopulateSQL' :: TablePopulationMode -> Fact -> TableName -> Reader Env Statement
-dimensionTablePopulateSQL' popMode fact dimTableName = do
+dimensionTablePopulateStmt :: TablePopulationMode -> Fact -> TableName -> Reader Env Statement
+dimensionTablePopulateStmt popMode fact dimTableName = do
   Settings {..}    <- asks envSettings
   tables           <- asks envTables
   defaults         <- asks envTypeDefaults
   let factTable    = fromJust $ findTable (factTableName fact) tables
       colMapping   = dimColumnMapping settingDimPrefix fact dimTableName
-      selectCols   = [ flip sia (nmc cName) $ coalesceColumn' defaults (factTableName fact) col
+      selectCols   = [ flip sia (nmc cName) $ coalesceColumn defaults (factTableName fact) col
                        | (_, cName) <- colMapping
                        , let col    = fromJust . findColumn cName $ tableColumns factTable ]
       timeCol      = head [ cName | DimTime cName <- factColumns fact ]

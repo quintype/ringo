@@ -6,19 +6,13 @@ import qualified Data.Map as Map
 import qualified Data.Text as Text
 
 import Database.HsSqlPpp.Syntax (ScalarExpr)
-import Data.List   (find)
-import Data.Monoid ((<>))
-import Data.Text   (Text)
+import Data.List                (find)
+import Data.Monoid              ((<>))
+import Data.Text                (Text)
 
 import Ringo.Extractor.Internal
 import Ringo.Generator.Sql
 import Ringo.Types
-
-joinColumnNames :: [ColumnName] -> Text
-joinColumnNames = Text.intercalate ",\n"
-
-fullColumnName :: TableName -> ColumnName -> ColumnName
-fullColumnName tName cName = tName <> "." <> cName
 
 dimColumnMapping :: Text -> Fact -> TableName -> [(ColumnName, ColumnName)]
 dimColumnMapping dimPrefix fact dimTableName =
@@ -26,11 +20,8 @@ dimColumnMapping dimPrefix fact dimTableName =
     | DimVal dName cName <- factColumns fact
     , dimPrefix <> dName == dimTableName ]
 
-coalesceColumn :: TypeDefaults -> TableName -> Column -> Text
-coalesceColumn defaults tName = ppScalarExpr . coalesceColumn' defaults tName
-
-coalesceColumn' :: TypeDefaults -> TableName -> Column -> ScalarExpr
-coalesceColumn' defaults tName Column{..} =
+coalesceColumn :: TypeDefaults -> TableName -> Column -> ScalarExpr
+coalesceColumn defaults tName Column{..} =
   if columnNullable == Null
     then app "coalesce" [fqColName, num $ defVal columnType]
     else fqColName

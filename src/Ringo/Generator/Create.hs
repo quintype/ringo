@@ -47,8 +47,8 @@ tableDefnStmts Table {..} = do
 
 tableDefnSQL :: Table -> (Table -> Reader Env [Statement]) -> Reader Env [Text]
 tableDefnSQL table indexFn = do
-  ds <- map ppSQL <$> tableDefnStmts table
-  is <- map (\st -> ppSQL st <> ";\n") <$> indexFn table
+  ds <- map ppStatement <$> tableDefnStmts table
+  is <- map (\st -> ppStatement st <> ";\n") <$> indexFn table
   return $ ds ++ is
 
 dimensionTableDefnSQL :: Table -> Reader Env [Text]
