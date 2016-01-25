@@ -38,9 +38,11 @@ timeUnitColumnName :: Text -> ColumnName -> TimeUnit -> ColumnName
 timeUnitColumnName dimIdColName colName timeUnit =
   colName <> "_" <> timeUnitName timeUnit <> "_" <> dimIdColName
 
-factDimFKIdColumnName :: Text -> Text -> TableName -> ColumnName
-factDimFKIdColumnName dimPrefix dimIdColName dimTableName =
-  fromMaybe dimTableName (Text.stripPrefix dimPrefix dimTableName) <> "_" <> dimIdColName
+factDimFKIdColumnName :: Text -> Text -> Fact -> Table -> [Table] -> ColumnName
+factDimFKIdColumnName dimPrefix dimIdColName dimFact dimTable@Table { .. } tables =
+  if dimTable `elem` tables
+    then head [ cName | DimId tName cName <- factColumns dimFact, tName == tableName ]
+    else fromMaybe tableName (Text.stripPrefix dimPrefix tableName) <> "_" <> dimIdColName
 
 extractedFactTableName :: Text -> Text -> TableName -> TimeUnit -> TableName
 extractedFactTableName factPrefix factInfix factName timeUnit =

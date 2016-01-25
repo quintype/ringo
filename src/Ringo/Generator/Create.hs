@@ -70,6 +70,7 @@ factTableDefnSQL fact table = tableDefnSQL table (factTableIndexStmts fact)
 factTableIndexStmts :: Fact -> Table -> Reader Env [Statement]
 factTableIndexStmts fact table = do
   Settings {..} <- asks envSettings
+  tables        <- asks envTables
   allDims       <- extractAllDimensionTables fact
 
   let dimTimeCol           = head [ cName | DimTime cName <- factColumns fact ]
@@ -83,8 +84,8 @@ factTableIndexStmts fact table = do
         TenantId cName -> Just [cName]
         _              -> Nothing
 
-      dimCols  = [ [factDimFKIdColumnName settingDimPrefix settingDimTableIdColumnName tableName]
-                   | (_, Table {..}) <- allDims ]
+      dimCols  = [ [ factDimFKIdColumnName settingDimPrefix settingDimTableIdColumnName dimFact dimTable tables ]
+                   | (dimFact, dimTable) <- allDims ]
 
   return [ CreateIndexTSQL ea (nmc "") (name $ tabName) (map nmc cols)
            | cols <- factCols ++ dimCols ++ [ [cName, dimTimeColName dimTimeCol]

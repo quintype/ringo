@@ -160,7 +160,8 @@ factTablePopulateStmts popMode fact = do
         _                         -> []
 
       dimColMap = for allDims $ \(dimFact, factTable@Table {tableName}) -> let
-          dimFKIdColName        = factDimFKIdColumnName settingDimPrefix dimIdColName tableName
+          dimFKIdColName        =
+            factDimFKIdColumnName settingDimPrefix dimIdColName dimFact factTable tables
           factSourceTableName   = factTableName dimFact
           factSourceTable       = fromJust . findTable factSourceTableName $ tables
           dimFKIdColumn         = fromJust . findColumn dimFKIdColName $ tableColumns factSourceTable
@@ -168,16 +169,16 @@ factTablePopulateStmts popMode fact = do
             [ binop "=" (eqi tableName dimColName) (coalesceColumn defaults factSourceTableName sourceCol)
               | (dimColName, sourceColName) <- dimColumnMapping settingDimPrefix dimFact tableName
               , let sourceCol = fromJust . findColumn sourceColName $ tableColumns factSourceTable ]
-          insertExpr            = if factTable `elem` tables -- existing dimension table
+          insertExpr = if factTable `elem` tables -- existing dimension table
             then (if columnNullable dimFKIdColumn == Null then coalesceFKId else id)
                    $ eqi factSourceTableName dimFKIdColName
             else coalesceFKId . subQueryExp $
-              makeSelect
-                { selSelectList = sl [ si $ ei dimIdColName ]
-                , selTref       =
-                    [ trefa (suffixTableName popMode settingTableNameSuffixTemplate tableName) tableName ]
-                , selWhere      = dimLookupWhereClauses
-                }
+                   makeSelect
+                     { selSelectList = sl [ si $ ei dimIdColName ]
+                     , selTref       =
+                         [ trefa (suffixTableName popMode settingTableNameSuffixTemplate tableName) tableName ]
+                     , selWhere      = dimLookupWhereClauses
+                     }
         in (dimFKIdColName, insertExpr, True)
 
       colMap              = [ (cName, (expr, nmc $ groupByColPrefix <> cName), addToGroupBy)

@@ -30,6 +30,7 @@ import qualified Ringo.Validator as V
 -- >>> import Ringo
 -- >>> import qualified Data.Map as Map
 -- >>> import qualified Data.Text as Text
+-- >>> import Data.List (nub)
 -- >>> import Text.Show.Pretty
 -- >>> :{
 --let sessionEventsTable =
@@ -68,18 +69,63 @@ import qualified Ringo.Validator as V
 --             , DimVal "user_agent" "browser_name"
 --             , DimVal "user_agent" "os"
 --             , DimVal "user_agent" "user_agent_name"
---             , DimVal "user_agent" "user_agent_type"
---             , DimVal "user_agent" "user_agent_device"
 --             , DimVal "geo" "geo_country_name"
 --             , DimVal "geo" "geo_city_name"
 --             , DimVal "geo" "geo_continent_name"
---             , DimVal "geo" "geo_most_specific_subdivision_name"
---             , DimVal "geo" "geo_time_zone"
 --             , FactCount Nothing "session_count"
 --             ]
 --           }
---    tables       = [sessionEventsTable]
---    facts        = [sessionFact]
+--    pageViewEventsTable =
+--      Table { tableName = "page_view_events"
+--            , tableColumns =
+--              [ Column "id" "uuid"                                NotNull
+--              , Column "created_at" "timestamp without time zone" NotNull
+--              , Column "member_id" "integer"                      Null
+--              , Column "publisher_id" "integer"                   NotNull
+--              , Column "device_tracker_id" "uuid"                 Null
+--              , Column "session_event_id" "uuid"                  Null
+--              , Column "page_type" "character varying(20)"        NotNull
+--              , Column "referrer" "character varying(1024)"       Null
+--              , Column "url" "character varying(1024)"            Null
+--              , Column "referrer_id" "integer"                    Null
+--              ]
+--            , tableConstraints =
+--              [ PrimaryKey "id"
+--              , ForeignKey "session_events" [ ("session_event_id", "id")
+--                                            , ("publisher_id", "publisher_id")
+--                                            ]
+--              , ForeignKey "referrers" [ ("referrer_id", "id")
+--                                       , ("publisher_id", "publisher_id")
+--                                       ]
+--              ]
+--            }
+--    pageViewFact =
+--      Fact { factName = "page_view"
+--           , factTableName = "page_view_events"
+--           , factTablePersistent = True
+--           , factParentNames = [ "session" ]
+--           , factColumns =
+--             [ DimTime "created_at"
+--             , NoDimId "publisher_id"
+--             , DimVal "page_type" "page_type"
+--             , DimId "referrers" "referrer_id"
+--             , FactCount Nothing "view_count"
+--             ]
+--           }
+--    referrersTable =
+--      Table { tableName = "referrers"
+--            , tableColumns =
+--              [ Column "id" "integer"                  NotNull
+--              , Column "publisher_id" "integer"        NotNull
+--              , Column "name" "character varying(100)" NotNull
+--              ]
+--            , tableConstraints =
+--              [ PrimaryKey "id"
+--              , UniqueKey ["publisher_id", "name"]
+--              ]
+--            }
+--    tables       = [sessionEventsTable, pageViewEventsTable, referrersTable]
+--    facts        = [sessionFact, pageViewFact]
 --    typeDefaults = Map.fromList [ ("integer", "-1")
 --                                , ("timestamp", "'00-00-00 00:00:00'")
 --                                , ("character", "'__UNKNOWN_VAL__'")
@@ -104,6 +150,17 @@ import qualified Ringo.Validator as V
 -- Column user_agent_id integer NOT NULL
 -- UniqueKey (created_at_minute_id, publisher_id, geo_id, user_agent_id)
 -- <BLANKLINE>
+-- >>> print $ extractFactTable env pageViewFact
+-- Table fact_page_view_by_minute
+-- Column created_at_minute_id bigint NOT NULL
+-- Column publisher_id integer NOT NULL
+-- Column view_count integer NOT NULL
+-- Column referrer_id integer NOT NULL
+-- Column page_type_id integer NOT NULL
+-- Column geo_id integer NOT NULL
+-- Column user_agent_id integer NOT NULL
+-- UniqueKey (created_at_minute_id, publisher_id, referrer_id, page_type_id, geo_id, user_agent_id)
+-- <BLANKLINE>
 extractFactTable :: Env -> Fact -> Table
 extractFactTable env = flip runReader env . E.extractFactTable
 
@@ -115,20 +172,23 @@ extractFactTable env = flip runReader env . E.extractFactTable
 -- Column country_name character varying(50) NOT NULL
 -- Column city_name character varying(50) NOT NULL
 -- Column continent_name character varying(15) NOT NULL
--- Column most_specific_subdivision_name character varying(100) NOT NULL
--- Column time_zone character varying(20) NOT NULL
 -- PrimaryKey id
--- UniqueKey (country_name, city_name, continent_name, most_specific_subdivision_name, time_zone)
+-- UniqueKey (country_name, city_name, continent_name)
 -- <BLANKLINE>
 -- Table dim_user_agent
 -- Column id serial NOT NULL
 -- Column browser_name character varying(50) NOT NULL
 -- Column os character varying(50) NOT NULL
 -- Column name character varying(100) NOT NULL
--- Column type character varying(15) NOT NULL
--- Column device character varying(15) NOT NULL
 -- PrimaryKey id
--- UniqueKey (browser_name, os, name, type, device)
+-- UniqueKey (browser_name, os, name)
+-- <BLANKLINE>
+-- >>> mapM_ print . filter (`notElem` tables) $ extractDimensionTables env pageViewFact
+-- Table dim_page_type
+-- Column id serial NOT NULL
+-- Column page_type character varying(20) NOT NULL
+-- PrimaryKey id
+-- UniqueKey (page_type)
 -- <BLANKLINE>
 extractDimensionTables :: Env -> Fact -> [Table]
 extractDimensionTables env = flip runReader env . E.extractDimensionTables
@@ -143,21 +203,32 @@ extractDimensionTables env = flip runReader env . E.extractDimensionTables
 --     , [ "session_events" , "dim_user_agent" , "dim_geo" ]
 --     )
 --   ]
+-- >>> putStrLn . ppShow $ extractDependencies env pageViewFact
+-- fromList
+--   [ ( "dim_page_type" , [ "page_view_events" ] )
+--   , ( "fact_page_view_by_minute"
+--     , [ "page_view_events"
+--       , "session_events"
+--       , "dim_page_type"
+--       , "referrers"
+--       , "dim_user_agent"
+--       , "dim_geo"
+--       ]
+--     )
+--   ]
 extractDependencies :: Env -> Fact -> Dependencies
 extractDependencies env = flip runReader env . E.extractDependencies
 
 -- |
 --
--- >>> let storySessionDimTables = extractDimensionTables env sessionFact
--- >>> let sqls = map (dimensionTableDefnSQL env) storySessionDimTables
+-- >>> let dimTables = filter (`notElem` tables) . nub . concatMap (extractDimensionTables env) $ facts
+-- >>> let sqls = map (dimensionTableDefnSQL env) dimTables
 -- >>> mapM_ (\sqls -> mapM_ (putStr . Text.unpack) sqls >> putStrLn "--------" ) sqls
 -- create table dim_geo (
 --   id serial not null,
 --   country_name character varying(50) not null,
 --   city_name character varying(50) not null,
---   continent_name character varying(15) not null,
---   most_specific_subdivision_name character varying(100) not null,
---   time_zone character varying(20) not null
+--   continent_name character varying(15) not null
 -- )
 -- ;
 -- <BLANKLINE>
@@ -165,9 +236,7 @@ extractDependencies env = flip runReader env . E.extractDependencies
 -- <BLANKLINE>
 -- alter table dim_geo add unique (country_name,
 --                                 city_name,
---                                 continent_name,
---                                 most_specific_subdivision_name,
---                                 time_zone);
+--                                 continent_name);
 -- <BLANKLINE>
 -- create index  on dim_geo (country_name)
 -- ;
@@ -175,28 +244,18 @@ extractDependencies env = flip runReader env . E.extractDependencies
 -- ;
 -- create index  on dim_geo (continent_name)
 -- ;
--- create index  on dim_geo (most_specific_subdivision_name)
--- ;
--- create index  on dim_geo (time_zone)
--- ;
 -- --------
 -- create table dim_user_agent (
 --   id serial not null,
 --   browser_name character varying(50) not null,
 --   os character varying(50) not null,
---   name character varying(100) not null,
---   type character varying(15) not null,
---   device character varying(15) not null
+--   name character varying(100) not null
 -- )
 -- ;
 -- <BLANKLINE>
 -- alter table dim_user_agent add primary key (id);
 -- <BLANKLINE>
--- alter table dim_user_agent add unique (browser_name,
---                                        os,
---                                        name,
---                                        type,
---                                        device);
+-- alter table dim_user_agent add unique (browser_name, os, name);
 -- <BLANKLINE>
 -- create index  on dim_user_agent (browser_name)
 -- ;
@@ -204,10 +263,17 @@ extractDependencies env = flip runReader env . E.extractDependencies
 -- ;
 -- create index  on dim_user_agent (name)
 -- ;
--- create index  on dim_user_agent (type)
+-- --------
+-- create table dim_page_type (
+--   id serial not null,
+--   page_type character varying(20) not null
+-- )
 -- ;
--- create index  on dim_user_agent (device)
--- ;
+-- <BLANKLINE>
+-- alter table dim_page_type add primary key (id);
+-- <BLANKLINE>
+-- alter table dim_page_type add unique (page_type);
+-- <BLANKLINE>
 -- --------
 dimensionTableDefnSQL :: Env -> Table -> [Text]
 dimensionTableDefnSQL env = flip runReader env . G.dimensionTableDefnSQL
@@ -239,6 +305,39 @@ dimensionTableDefnSQL env = flip runReader env . G.dimensionTableDefnSQL
 -- ;
 -- create index  on fact_session_by_minute (user_agent_id)
 -- ;
+-- >>> let pageViewFactTable = extractFactTable env pageViewFact
+-- >>> let sqls = factTableDefnSQL env pageViewFact pageViewFactTable
+-- >>> mapM_ (putStr . Text.unpack) sqls
+-- create table fact_page_view_by_minute (
+--   created_at_minute_id bigint not null,
+--   publisher_id integer not null,
+--   view_count integer not null,
+--   referrer_id integer not null,
+--   page_type_id integer not null,
+--   geo_id integer not null,
+--   user_agent_id integer not null
+-- )
+-- ;
+-- <BLANKLINE>
+-- alter table fact_page_view_by_minute add unique (created_at_minute_id,
+--                                                  publisher_id,
+--                                                  referrer_id,
+--                                                  page_type_id,
+--                                                  geo_id,
+--                                                  user_agent_id);
+-- <BLANKLINE>
+-- create index  on fact_page_view_by_minute (created_at_minute_id)
+-- ;
+-- create index  on fact_page_view_by_minute (publisher_id)
+-- ;
+-- create index  on fact_page_view_by_minute (referrer_id)
+-- ;
+-- create index  on fact_page_view_by_minute (page_type_id)
+-- ;
+-- create index  on fact_page_view_by_minute (geo_id)
+-- ;
+-- create index  on fact_page_view_by_minute (user_agent_id)
+-- ;
 factTableDefnSQL :: Env -> Fact -> Table -> [Text]
 factTableDefnSQL env fact = flip runReader env . G.factTableDefnSQL fact
 
@@ -247,60 +346,46 @@ factTableDefnSQL env fact = flip runReader env . G.factTableDefnSQL fact
 -- >>> let storySessionDimTableNames = map tableName $ extractDimensionTables env sessionFact
 -- >>> let sqls = map (dimensionTablePopulateSQL FullPopulation env sessionFact) storySessionDimTableNames
 -- >>> mapM_ (putStr . Text.unpack) sqls
--- insert into dim_geo (country_name,
---                      city_name,
---                      continent_name,
---                      most_specific_subdivision_name,
---                      time_zone)
+-- insert into dim_geo (country_name, city_name, continent_name)
 -- select distinct
 --     coalesce(session_events.geo_country_name,'__UNKNOWN_VAL__') as geo_country_name,
 --     coalesce(session_events.geo_city_name,'__UNKNOWN_VAL__') as geo_city_name,
---     coalesce(session_events.geo_continent_name,'__UNKNOWN_VAL__') as geo_continent_name,
---     coalesce(session_events.geo_most_specific_subdivision_name,'__UNKNOWN_VAL__') as geo_most_specific_subdivision_name,
---     coalesce(session_events.geo_time_zone,'__UNKNOWN_VAL__') as geo_time_zone
+--     coalesce(session_events.geo_continent_name,'__UNKNOWN_VAL__') as geo_continent_name
 --   from
 --     session_events
 --   where
---     (geo_country_name is not null or geo_city_name is not null or geo_continent_name is not null or geo_most_specific_subdivision_name is not null or geo_time_zone is not null)
+--     (geo_country_name is not null or geo_city_name is not null or geo_continent_name is not null)
 --     and
 --     created_at < ?
 -- ;
 -- <BLANKLINE>
--- insert into dim_user_agent (browser_name, os, name, type, device)
+-- insert into dim_user_agent (browser_name, os, name)
 -- select distinct
 --     coalesce(session_events.browser_name,'__UNKNOWN_VAL__') as browser_name,
 --     coalesce(session_events.os,'__UNKNOWN_VAL__') as os,
---     coalesce(session_events.user_agent_name,'__UNKNOWN_VAL__') as user_agent_name,
---     coalesce(session_events.user_agent_type,'__UNKNOWN_VAL__') as user_agent_type,
---     coalesce(session_events.user_agent_device,'__UNKNOWN_VAL__') as user_agent_device
+--     coalesce(session_events.user_agent_name,'__UNKNOWN_VAL__') as user_agent_name
 --   from
 --     session_events
 --   where
---     (browser_name is not null or os is not null or user_agent_name is not null or user_agent_type is not null or user_agent_device is not null)
+--     (browser_name is not null or os is not null or user_agent_name is not null)
 --     and
 --     created_at < ?
 -- ;
 -- <BLANKLINE>
 -- >>> let sqls = map (dimensionTablePopulateSQL IncrementalPopulation env sessionFact) storySessionDimTableNames
 -- >>> mapM_ (putStr . Text.unpack) sqls
--- insert into dim_geo (country_name,
---                      city_name,
---                      continent_name,
---                      most_specific_subdivision_name,
---                      time_zone)
+-- insert into dim_geo (country_name, city_name, continent_name)
 -- select
 --     x.*
 --   from
 --     (select distinct
 --          coalesce(session_events.geo_country_name,'__UNKNOWN_VAL__') as geo_country_name,
 --          coalesce(session_events.geo_city_name,'__UNKNOWN_VAL__') as geo_city_name,
---          coalesce(session_events.geo_continent_name,'__UNKNOWN_VAL__') as geo_continent_name,
---          coalesce(session_events.geo_most_specific_subdivision_name,'__UNKNOWN_VAL__') as geo_most_specific_subdivision_name,
---          coalesce(session_events.geo_time_zone,'__UNKNOWN_VAL__') as geo_time_zone
+--          coalesce(session_events.geo_continent_name,'__UNKNOWN_VAL__') as geo_continent_name
 --        from
 --          session_events
 --        where
---          (geo_country_name is not null or geo_city_name is not null or geo_continent_name is not null or geo_most_specific_subdivision_name is not null or geo_time_zone is not null)
+--          (geo_country_name is not null or geo_city_name is not null or geo_continent_name is not null)
 --          and
 --          created_at < ?
 --          and
@@ -312,34 +397,24 @@ factTableDefnSQL env fact = flip runReader env . G.factTableDefnSQL fact
 --          dim_geo.city_name = x.geo_city_name
 --          and
 --          dim_geo.continent_name = x.geo_continent_name
---          and
---          dim_geo.most_specific_subdivision_name = x.geo_most_specific_subdivision_name
---          and
---          dim_geo.time_zone = x.geo_time_zone
 --   where
 --     dim_geo.country_name is null and dim_geo.city_name is null
 --     and
 --     dim_geo.continent_name is null
---     and
---     dim_geo.most_specific_subdivision_name is null
---     and
---     dim_geo.time_zone is null
 -- ;
 -- <BLANKLINE>
--- insert into dim_user_agent (browser_name, os, name, type, device)
+-- insert into dim_user_agent (browser_name, os, name)
 -- select
 --     x.*
 --   from
 --     (select distinct
 --          coalesce(session_events.browser_name,'__UNKNOWN_VAL__') as browser_name,
 --          coalesce(session_events.os,'__UNKNOWN_VAL__') as os,
---          coalesce(session_events.user_agent_name,'__UNKNOWN_VAL__') as user_agent_name,
---          coalesce(session_events.user_agent_type,'__UNKNOWN_VAL__') as user_agent_type,
---          coalesce(session_events.user_agent_device,'__UNKNOWN_VAL__') as user_agent_device
+--          coalesce(session_events.user_agent_name,'__UNKNOWN_VAL__') as user_agent_name
 --        from
 --          session_events
 --        where
---          (browser_name is not null or os is not null or user_agent_name is not null or user_agent_type is not null or user_agent_device is not null)
+--          (browser_name is not null or os is not null or user_agent_name is not null)
 --          and
 --          created_at < ?
 --          and
@@ -351,18 +426,43 @@ factTableDefnSQL env fact = flip runReader env . G.factTableDefnSQL fact
 --          dim_user_agent.os = x.os
 --          and
 --          dim_user_agent.name = x.user_agent_name
---          and
---          dim_user_agent.type = x.user_agent_type
---          and
---          dim_user_agent.device = x.user_agent_device
 --   where
 --     dim_user_agent.browser_name is null and dim_user_agent.os is null
 --     and
 --     dim_user_agent.name is null
---     and
---     dim_user_agent.type is null
---     and
---     dim_user_agent.device is null
+-- ;
+-- <BLANKLINE>
+-- >>> let pageViewDimTableNames = map tableName . filter (`notElem` tables) $ extractDimensionTables env pageViewFact
+-- >>> let sqls = map (dimensionTablePopulateSQL FullPopulation env pageViewFact) pageViewDimTableNames
+-- >>> mapM_ (putStr . Text.unpack) sqls
+-- insert into dim_page_type (page_type)
+-- select distinct
+--     page_view_events.page_type as page_type
+--   from
+--     page_view_events
+--   where
+--     (page_type is not null) and created_at < ?
+-- ;
+-- <BLANKLINE>
+-- >>> let sqls = map (dimensionTablePopulateSQL IncrementalPopulation env pageViewFact) pageViewDimTableNames
+-- >>> mapM_ (putStr . Text.unpack) sqls
+-- insert into dim_page_type (page_type)
+-- select
+--     x.*
+--   from
+--     (select distinct
+--          page_view_events.page_type as page_type
+--        from
+--          page_view_events
+--        where
+--          (page_type is not null) and created_at < ?
+--          and
+--          created_at >= ?) as x
+--     left outer join
+--     dim_page_type
+--       on dim_page_type.page_type = x.page_type
+--   where
+--     dim_page_type.page_type is null
 -- ;
 -- <BLANKLINE>
 dimensionTablePopulateSQL :: TablePopulationMode -> Env -> Fact -> TableName -> Text
@@ -391,11 +491,7 @@ dimensionTablePopulateSQL popMode env fact =
 --                   and
 --                   dim_geo.city_name = coalesce(session_events.geo_city_name,'__UNKNOWN_VAL__')
 --                   and
---                   dim_geo.continent_name = coalesce(session_events.geo_continent_name,'__UNKNOWN_VAL__')
---                   and
---                   dim_geo.most_specific_subdivision_name = coalesce(session_events.geo_most_specific_subdivision_name,'__UNKNOWN_VAL__')
---                   and
---                   dim_geo.time_zone = coalesce(session_events.geo_time_zone,'__UNKNOWN_VAL__')),-1) as xxff_geo_id,
+--                   dim_geo.continent_name = coalesce(session_events.geo_continent_name,'__UNKNOWN_VAL__')),-1) as xxff_geo_id,
 --     coalesce((select
 --                   id
 --                 from
@@ -405,11 +501,7 @@ dimensionTablePopulateSQL popMode env fact =
 --                   and
 --                   dim_user_agent.os = coalesce(session_events.os,'__UNKNOWN_VAL__')
 --                   and
---                   dim_user_agent.name = coalesce(session_events.user_agent_name,'__UNKNOWN_VAL__')
---                   and
---                   dim_user_agent.type = coalesce(session_events.user_agent_type,'__UNKNOWN_VAL__')
---                   and
---                   dim_user_agent.device = coalesce(session_events.user_agent_device,'__UNKNOWN_VAL__')),-1) as xxff_user_agent_id
+--                   dim_user_agent.name = coalesce(session_events.user_agent_name,'__UNKNOWN_VAL__')),-1) as xxff_user_agent_id
 --   from
 --     session_events
 --   where
@@ -441,11 +533,7 @@ dimensionTablePopulateSQL popMode env fact =
 --                   and
 --                   dim_geo.city_name = coalesce(session_events.geo_city_name,'__UNKNOWN_VAL__')
 --                   and
---                   dim_geo.continent_name = coalesce(session_events.geo_continent_name,'__UNKNOWN_VAL__')
---                   and
---                   dim_geo.most_specific_subdivision_name = coalesce(session_events.geo_most_specific_subdivision_name,'__UNKNOWN_VAL__')
---                   and
---                   dim_geo.time_zone = coalesce(session_events.geo_time_zone,'__UNKNOWN_VAL__')),-1) as xxff_geo_id,
+--                   dim_geo.continent_name = coalesce(session_events.geo_continent_name,'__UNKNOWN_VAL__')),-1) as xxff_geo_id,
 --     coalesce((select
 --                   id
 --                 from
@@ -455,11 +543,7 @@ dimensionTablePopulateSQL popMode env fact =
 --                   and
 --                   dim_user_agent.os = coalesce(session_events.os,'__UNKNOWN_VAL__')
 --                   and
---                   dim_user_agent.name = coalesce(session_events.user_agent_name,'__UNKNOWN_VAL__')
---                   and
---                   dim_user_agent.type = coalesce(session_events.user_agent_type,'__UNKNOWN_VAL__')
---                   and
---                   dim_user_agent.device = coalesce(session_events.user_agent_device,'__UNKNOWN_VAL__')),-1) as xxff_user_agent_id
+--                   dim_user_agent.name = coalesce(session_events.user_agent_name,'__UNKNOWN_VAL__')),-1) as xxff_user_agent_id
 --   from
 --     session_events
 --   where
@@ -471,20 +555,78 @@ dimensionTablePopulateSQL popMode env fact =
 --     xxff_user_agent_id
 -- ;
 -- <BLANKLINE>
+-- >>> let sqls = factTablePopulateSQL FullPopulation env pageViewFact
+-- >>> mapM_ (putStr . Text.unpack) sqls
+-- insert into fact_page_view_by_minute (created_at_minute_id,
+--                                       publisher_id,
+--                                       view_count,
+--                                       referrer_id,
+--                                       page_type_id,
+--                                       geo_id,
+--                                       user_agent_id)
+-- select
+--     cast(floor(extract(epoch from page_view_events.created_at) / 60) as bigint) as xxff_created_at_minute_id,
+--     page_view_events.publisher_id as xxff_publisher_id,
+--     count(*) as xxff_view_count,
+--     coalesce(page_view_events.referrer_id,-1) as xxff_referrer_id,
+--     coalesce((select
+--                   id
+--                 from
+--                   dim_page_type as dim_page_type
+--                 where
+--                   dim_page_type.page_type = page_view_events.page_type),-1) as xxff_page_type_id,
+--     coalesce((select
+--                   id
+--                 from
+--                   dim_geo as dim_geo
+--                 where
+--                   dim_geo.country_name = coalesce(session_events.geo_country_name,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_geo.city_name = coalesce(session_events.geo_city_name,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_geo.continent_name = coalesce(session_events.geo_continent_name,'__UNKNOWN_VAL__')),-1) as xxff_geo_id,
+--     coalesce((select
+--                   id
+--                 from
+--                   dim_user_agent as dim_user_agent
+--                 where
+--                   dim_user_agent.browser_name = coalesce(session_events.browser_name,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_user_agent.os = coalesce(session_events.os,'__UNKNOWN_VAL__')
+--                   and
+--                   dim_user_agent.name = coalesce(session_events.user_agent_name,'__UNKNOWN_VAL__')),-1) as xxff_user_agent_id
+--   from
+--     page_view_events
+--     left outer join
+--     session_events
+--       on page_view_events.session_event_id = session_events.id
+--          and
+--          page_view_events.publisher_id = session_events.publisher_id
+--   where
+--     page_view_events.created_at < ?
+--   group by
+--     xxff_created_at_minute_id,
+--     xxff_publisher_id,
+--     xxff_referrer_id,
+--     xxff_page_type_id,
+--     xxff_geo_id,
+--     xxff_user_agent_id
+-- ;
+-- <BLANKLINE>
 factTablePopulateSQL :: TablePopulationMode -> Env -> Fact -> [Text]
 factTablePopulateSQL popMode env =
   flip runReader env . G.factTablePopulateSQL popMode
 
 -- |
 --
--- >>> validateTable env sessionEventsTable
+-- >>> concatMap (validateTable env) tables
 -- []
 validateTable :: Env -> Table -> [ValidationError]
 validateTable env = flip runReader env . V.validateTable
 
 -- |
 --
--- >>> validateFact env sessionFact
+-- >>> concatMap (validateFact env) facts
 -- []
 validateFact :: Env -> Fact -> [ValidationError]
 validateFact env = flip runReader env . V.validateFact

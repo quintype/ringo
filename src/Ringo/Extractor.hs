@@ -48,9 +48,9 @@ extractFactTable fact = do
         FactCountDistinct _ cName -> [ Column cName "json" NotNull ]
         _                         -> []
 
-      fkColumns = for allDims $ \(_, Table {..}) ->
-        let colName     = factDimFKIdColumnName settingDimPrefix dimIdColName tableName
-            colType     = idColTypeToFKIdColType settingDimTableIdColumnType
+      fkColumns = for allDims $ \(dimFact, dimTable) ->
+        let colName = factDimFKIdColumnName settingDimPrefix dimIdColName dimFact dimTable tables
+            colType = idColTypeToFKIdColType settingDimTableIdColumnType
         in Column colName colType NotNull
 
       ukColNames =
