@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE PatternSynonyms #-}
+
 module Ringo.Generator.Populate.Dimension (dimensionTablePopulateSQL) where
 
 #if MIN_VERSION_base(4,8,0)
@@ -32,7 +34,7 @@ dimensionTablePopulateStmt popMode fact dimTableName = do
       selectCols   = [ flip sia (nmc cName) $ coalesceColumn defaults (factTableName fact) col
                        | (_, cName) <- colMapping
                        , let col    = fromJust . findColumn cName $ tableColumns factTable ]
-      timeCol      = head [ cName | DimTime cName <- factColumns fact ]
+      timeCol      = head ([ cName | DimTimeV cName <- factColumns fact ] :: [ColumnName])
       isNotNullC   = parens . foldBinop "or" . map (postop "isnotnull" . ei . snd) $ colMapping
       selectWhereC = Just . foldBinop "and" $
                        [ isNotNullC, binop "<" (ei timeCol) placeholder ] ++

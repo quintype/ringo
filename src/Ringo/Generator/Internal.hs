@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE GADTs #-}
 module Ringo.Generator.Internal where
 
 import qualified Data.Map as Map
@@ -16,9 +17,9 @@ import Ringo.Types
 
 dimColumnMapping :: Text -> Fact -> TableName -> [(ColumnName, ColumnName)]
 dimColumnMapping dimPrefix fact dimTableName =
-  [ (dimColumnName dName cName, cName)
-    | DimVal dName cName <- factColumns fact
-    , dimPrefix <> dName == dimTableName ]
+  [ (dimColumnName factColTargetTable factColTargetColumn, factColTargetColumn)
+    | FactColumn { factColType = DimVal {..}, ..} <- factColumns fact
+    , dimPrefix <> factColTargetTable == dimTableName ]
 
 coalesceColumn :: TypeDefaults -> TableName -> Column -> ScalarExpr
 coalesceColumn defaults tName Column{..} =

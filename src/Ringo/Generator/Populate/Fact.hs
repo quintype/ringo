@@ -4,6 +4,9 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE PatternSynonyms #-}
+
 module Ringo.Generator.Populate.Fact (factTablePopulateSQL) where
 
 import qualified Data.Text as Text
@@ -55,61 +58,66 @@ LANGUAGE 'plpgsql' IMMUTABLE;
 |]
 
 factCountDistinctUpdateStmts :: TablePopulationMode -> Fact -> Text -> QueryExpr -> Reader Env [Statement]
-factCountDistinctUpdateStmts
-    popMode fact groupByColPrefix ~Select {selSelectList = SelectList _ origSelectItems, ..} = do
-  Settings {..}         <- asks envSettings
-  tables                <- asks envTables
-  let countDistinctCols = [ col | col@(FactCountDistinct _ _) <- factColumns fact]
-      fTableName        = factTableName fact
-      fTable            = fromJust . findTable fTableName $ tables
-      tablePKColName    = head [ cName | PrimaryKey cName <- tableConstraints fTable ]
-      extFactTableName  =
-        suffixTableName popMode settingTableNameSuffixTemplate
-          $ extractedFactTableName settingFactPrefix settingFactInfix (factName fact) settingTimeUnit
+factCountDistinctUpdateStmts popMode fact groupByColPrefix expr = case expr of
+  Select {selSelectList = SelectList _ origSelectItems, ..} -> do
+    Settings {..}         <- asks envSettings
+    tables                <- asks envTables
+    let fTableName        = factTableName fact
+        fTable            = fromJust . findTable fTableName $ tables
+        tablePKColName    = head [ cName | PrimaryKey cName <- tableConstraints fTable ]
+        extFactTableName  =
+          suffixTableName popMode settingTableNameSuffixTemplate
+            $ extractedFactTableName settingFactPrefix settingFactInfix (factName fact) settingTimeUnit
 
-  return $ for countDistinctCols $ \(FactCountDistinct scName cName) ->
-      let unqCol           = cast (eqi fTableName (fromMaybe tablePKColName scName)) "text"
+    return $ forMaybe (factColumns fact) $ \FactColumn {factColTargetColumn = cName, ..} ->
+      case factColType of
+        FactCountDistinct {factColMaybeSourceColumn = scName} ->
+          let unqCol           = cast (eqi fTableName (fromMaybe tablePKColName scName)) "text"
 
-          bucketSelectCols =
-            [ sia (binop "&" (app "hashtext" [ unqCol ])
-                             (num . Text.pack . show $ bucketCount settingFactCountDistinctErrorRate - 1))
-                  (nmc $ cName <> "_bnum")
-            , sia (binop "-"
-                     (num "31")
-                     (app "ilog2"
-                        [ app "min" [ binop "&"
-                                        (app "hashtext" [ unqCol ])
-                                        (prefop "~" (parens (binop "<<" (num "1") (num "31"))))]]))
-                  (nmc $ cName <> "_bhash")
-            ]
+              bucketSelectCols =
+                [ sia (binop "&" (app "hashtext" [ unqCol ])
+                                 (num . Text.pack . show $ bucketCount settingFactCountDistinctErrorRate - 1))
+                      (nmc $ cName <> "_bnum")
+                , sia (binop "-"
+                         (num "31")
+                         (app "ilog2"
+                            [ app "min" [ binop "&"
+                                            (app "hashtext" [ unqCol ])
+                                            (prefop "~" (parens (binop "<<" (num "1") (num "31"))))]]))
+                      (nmc $ cName <> "_bhash")
+                ]
 
-          groupByCols      = map ppScalarExpr selGroupBy
-          selectList       =
-            [ i | i@(SelectItem _ _ a) <- origSelectItems , a `elem` map nmc groupByCols ]
+              groupByCols      = map ppScalarExpr selGroupBy
+              selectList       =
+                [ i | i@(SelectItem _ _ a) <- origSelectItems , a `elem` map nmc groupByCols ]
 
-          selectStmt       =
-            makeSelect
-              { selSelectList = sl $ selectList ++ bucketSelectCols
-              , selTref       = selTref
-              , selWhere      = binop "and" (postop "isnotnull" unqCol) <$> selWhere
-              , selGroupBy    = selGroupBy ++ [ ei $ cName <> "_bnum" ]
-              }
+              selectStmt       =
+                makeSelect
+                  { selSelectList = sl $ selectList ++ bucketSelectCols
+                  , selTref       = selTref
+                  , selWhere      = binop "and" (postop "isnotnull" unqCol) <$> selWhere
+                  , selGroupBy    = selGroupBy ++ [ ei $ cName <> "_bnum" ]
+                  }
 
-          aggSelectClause  =
-            sia (app "json_object_agg" [ ei (cName <> "_bnum"), ei (cName <> "_bhash") ]) (nmc cName)
+              aggSelectClause  =
+                sia (app "json_object_agg" [ ei (cName <> "_bnum"), ei (cName <> "_bhash") ]) (nmc cName)
 
-      in update extFactTableName
-        [ (cName, eqi "xyz" cName) ]
-        [ subtrefa "xyz"
-            makeSelect
-              { selSelectList = sl $ map (si . ei) groupByCols ++ [ aggSelectClause ]
-              , selTref       = [ subtrefa "zyx" selectStmt ]
-              , selGroupBy    = selGroupBy
-              } ] $
-        foldBinop "and"
-          [ binop "=" (eqi extFactTableName . fromJust . Text.stripPrefix groupByColPrefix $ col)
-                       (eqi "xyz" col)
-            | col <- groupByCols ]
+          in Just $ update extFactTableName
+            [ (cName, eqi "xyz" cName) ]
+            [ subtrefa "xyz"
+                makeSelect
+                  { selSelectList = sl $ map (si . ei) groupByCols ++ [ aggSelectClause ]
+                  , selTref       = [ subtrefa "zyx" selectStmt ]
+                  , selGroupBy    = selGroupBy
+                  } ] $
+            foldBinop "and"
+              [ binop "=" (eqi extFactTableName . fromJust . Text.stripPrefix groupByColPrefix $ col)
+                           (eqi "xyz" col)
+                | col <- groupByCols ]
+
+        _ -> Nothing
+
+  _ -> return []
   where
     bucketCount :: Double -> Integer
     bucketCount errorRate =
@@ -143,21 +151,22 @@ factTablePopulateStmts popMode fact = do
 
       app' f cName = app f [ eqi fTableName cName ]
 
-      factColMap = concatFor (factColumns fact) $ \col -> case col of
-        DimTime cName             -> [ timeUnitColumnInsertSQL cName ]
-        NoDimId cName             -> [ dimIdColumnInsertSQL cName ]
-        TenantId cName            -> [ dimIdColumnInsertSQL cName ]
-        FactCount scName cName    ->
-          [ (cName, app "count" [ maybe star (eqi fTableName) scName ], False) ]
-        FactSum scName cName      -> [ (cName, app' "sum" scName, False) ]
-        FactMax scName cName      -> [ (cName, app' "max" scName, False) ]
-        FactMin scName cName      -> [ (cName, app' "min" scName, False) ]
-        FactAverage scName cName  ->
-          [ ( cName <> settingAvgCountColumSuffix, app' "count" scName, False )
-          , ( cName <> settingAvgSumColumnSuffix , app' "sum" scName  , False)
-          ]
-        FactCountDistinct _ cName -> [ (cName, cast (str "{}") "json", False) ]
-        _                         -> []
+      factColMap = concatFor (factColumns fact) $ \FactColumn {factColTargetColumn = cName, ..} ->
+        case factColType of
+          DimTime                -> [ timeUnitColumnInsertSQL cName ]
+          NoDimId                -> [ dimIdColumnInsertSQL cName ]
+          TenantId               -> [ dimIdColumnInsertSQL cName ]
+          FactCount {..}         ->
+            [ (cName, app "count" [ maybe star (eqi fTableName) factColMaybeSourceColumn ], False) ]
+          FactCountDistinct {..} -> [ (cName, cast (str "{}") "json", False) ]
+          FactSum {..}           -> [ (cName, app' "sum" factColSourceColumn, False) ]
+          FactMax {..}           -> [ (cName, app' "max" factColSourceColumn, False) ]
+          FactMin {..}           -> [ (cName, app' "min" factColSourceColumn, False) ]
+          FactAverage {..}       ->
+            [ ( cName <> settingAvgCountColumSuffix, app' "count" factColSourceColumn, False )
+            , ( cName <> settingAvgSumColumnSuffix , app' "sum" factColSourceColumn  , False)
+            ]
+          _                      -> []
 
       dimColMap = for allDims $ \(dimFact, factTable@Table {tableName}) -> let
           dimFKIdColName        =
@@ -191,7 +200,7 @@ factTablePopulateStmts popMode fact = do
         . map (factTableName . fst)
         $ allDims
 
-      timeCol             = eqi fTableName $ head [ cName | DimTime cName <- factColumns fact ]
+      timeCol             = eqi fTableName $ head [ cName | DimTimeV cName <- factColumns fact ]
 
       extFactTableName    = suffixTableName popMode settingTableNameSuffixTemplate
         $ extractedFactTableName settingFactPrefix settingFactInfix (factName fact) settingTimeUnit

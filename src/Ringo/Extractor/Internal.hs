@@ -2,6 +2,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE GADTs #-}
 module Ringo.Extractor.Internal where
 
 import qualified Data.Map  as Map
@@ -41,7 +42,9 @@ timeUnitColumnName dimIdColName colName timeUnit =
 factDimFKIdColumnName :: Text -> Text -> Fact -> Table -> [Table] -> ColumnName
 factDimFKIdColumnName dimPrefix dimIdColName dimFact dimTable@Table { .. } tables =
   if dimTable `elem` tables
-    then head [ cName | DimId tName cName <- factColumns dimFact, tName == tableName ]
+    then head [ factColTargetColumn
+                | FactColumn {factColType = DimId {..}, ..} <- factColumns dimFact
+                , factColTargetTable == tableName ]
     else fromMaybe tableName (Text.stripPrefix dimPrefix tableName) <> "_" <> dimIdColName
 
 extractedFactTableName :: Text -> Text -> TableName -> TimeUnit -> TableName
@@ -62,7 +65,9 @@ extractDimensionTables fact = do
   let table = fromJust . findTable (factTableName fact) $ tables
   return $ dimsFromIds tables ++ dimsFromVals settings (tableColumns table)
   where
-    dimsFromIds tables = catMaybes [ findTable d tables | DimId d _ <- factColumns fact ]
+    dimsFromIds tables =
+      catMaybes [ findTable factColTargetTable tables
+                  | FactColumn {factColType = DimId {..}} <- factColumns fact ]
 
     dimsFromVals Settings {..} tableColumns =
       map (\(dim, cols) ->
@@ -81,9 +86,9 @@ extractDimensionTables fact = do
                     . nub)
       . Map.fromListWith (flip (++))
       . mapMaybe (\fcol -> do
-                    DimVal d col <- fcol
-                    column       <- findColumn col tableColumns
-                    return (d, [ column ]))
+                    FactColumn {factColType = DimVal {..}, ..} <- fcol
+                    column <- findColumn factColTargetColumn tableColumns
+                    return (factColTargetTable, [ column ]))
       . map Just
       . factColumns
       $ fact

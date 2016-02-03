@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE GADTs #-}
 module Ringo.Extractor
        ( extractDimensionTables
        , extractAllDimensionTables
@@ -32,21 +33,22 @@ extractFactTable fact = do
       notNullSourceColumnCopy cName          = (sourceColumn cName) { columnNullable = NotNull }
       notNullSourceColumnRename scName cName = (notNullSourceColumnCopy scName) { columnName = cName }
 
-      columns = concatFor (factColumns fact) $ \col -> case col of
-        DimTime cName             ->
-          [ Column (timeUnitColumnName dimIdColName cName settingTimeUnit) "bigint" NotNull ]
-        NoDimId cName             -> [ notNullSourceColumnCopy cName ]
-        TenantId cName            -> [ notNullSourceColumnCopy cName ]
-        FactCount _ cName         -> [ Column cName countColType NotNull ]
-        FactSum scName cName      -> [ notNullSourceColumnRename scName cName ]
-        FactMax scName cName      -> [ notNullSourceColumnRename scName cName ]
-        FactMin scName cName      -> [ notNullSourceColumnRename scName cName ]
-        FactAverage scName cName  ->
-          [ Column (cName <> settingAvgCountColumSuffix) countColType NotNull
-          , notNullSourceColumnRename scName (cName <> settingAvgSumColumnSuffix)
-          ]
-        FactCountDistinct _ cName -> [ Column cName "json" NotNull ]
-        _                         -> []
+      columns = concatFor (factColumns fact) $ \FactColumn {factColTargetColumn = cName, ..} ->
+        case factColType of
+          DimTime                ->
+            [ Column (timeUnitColumnName dimIdColName cName settingTimeUnit) "bigint" NotNull ]
+          NoDimId                -> [ notNullSourceColumnCopy cName ]
+          TenantId               -> [ notNullSourceColumnCopy cName ]
+          FactCount {..}         -> [ Column cName countColType NotNull ]
+          FactCountDistinct {..} -> [ Column cName "json" NotNull ]
+          FactSum {..}           -> [ notNullSourceColumnRename factColSourceColumn cName ]
+          FactMax {..}           -> [ notNullSourceColumnRename factColSourceColumn cName ]
+          FactMin {..}           -> [ notNullSourceColumnRename factColSourceColumn cName ]
+          FactAverage {..}       ->
+            [ Column (cName <> settingAvgCountColumSuffix) countColType NotNull
+            , notNullSourceColumnRename factColSourceColumn (cName <> settingAvgSumColumnSuffix)
+            ]
+          _                      -> []
 
       fkColumns = for allDims $ \(dimFact, dimTable) ->
         let colName = factDimFKIdColumnName settingDimPrefix dimIdColName dimFact dimTable tables
@@ -55,11 +57,12 @@ extractFactTable fact = do
 
       ukColNames =
         (++ map columnName fkColumns)
-        . forMaybe (factColumns fact) $ \col -> case col of
-            DimTime cName  -> Just (timeUnitColumnName dimIdColName cName settingTimeUnit)
-            NoDimId cName  -> Just cName
-            TenantId cName -> Just cName
-            _              -> Nothing
+        . forMaybe (factColumns fact) $ \FactColumn {factColTargetColumn = cName, ..} ->
+            case factColType of
+                DimTime  -> Just $ timeUnitColumnName dimIdColName cName settingTimeUnit
+                NoDimId  -> Just cName
+                TenantId -> Just cName
+                _        -> Nothing
 
   return Table
          { tableName        =
@@ -77,15 +80,15 @@ extractDependencies fact = do
           (factTableName fct, parentFacts fct facts)
       factDimDeps    =
         nub . concat . Tree.flatten . flip Tree.unfoldTree fact $ \fct ->
-          ( forMaybe (factColumns fct) $ \col -> case col of
-              DimVal table _ -> Just $ settingDimPrefix  <> table
-              DimId table _  -> Just table
-              _              -> Nothing
+          ( forMaybe (factColumns fct) $ \FactColumn {..} -> case factColType of
+              DimVal {..} -> Just $ settingDimPrefix  <> factColTargetTable
+              DimId {..}  -> Just factColTargetTable
+              _           -> Nothing
           , parentFacts fct facts
           )
 
       dimDeps  = Map.fromList [ (settingDimPrefix <> table, [factTableName fact])
-                                | DimVal table _ <- factColumns fact ]
+                                | FactColumn {factColType = DimVal table} <- factColumns fact ]
 
       factDeps = Map.singleton (extractedTable settings) (factSourceDeps ++ factDimDeps)
   return $ Map.union dimDeps factDeps

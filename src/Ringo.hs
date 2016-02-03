@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 module Ringo
        ( -- | The examples in this module assume the following code has been run.
          --   The :{ and :} will only work in GHCi.
@@ -64,15 +63,15 @@ import qualified Ringo.Validator as V
 --           , factTablePersistent = True
 --           , factParentNames     = []
 --           , factColumns         =
---             [ DimTime "created_at"
---             , NoDimId "publisher_id"
---             , DimVal "user_agent" "browser_name"
---             , DimVal "user_agent" "os"
---             , DimVal "user_agent" "user_agent_name"
---             , DimVal "geo" "geo_country_name"
---             , DimVal "geo" "geo_city_name"
---             , DimVal "geo" "geo_continent_name"
---             , FactCount Nothing "session_count"
+--             [ FactColumn "created_at" $ DimTime
+--             , FactColumn "publisher_id" $ NoDimId
+--             , FactColumn "browser_name" $ DimVal "user_agent"
+--             , FactColumn "os" $ DimVal "user_agent"
+--             , FactColumn "user_agent_name" $ DimVal "user_agent"
+--             , FactColumn "geo_country_name" $ DimVal "geo"
+--             , FactColumn "geo_city_name" $ DimVal "geo"
+--             , FactColumn "geo_continent_name" $ DimVal "geo"
+--             , FactColumn "session_count" $ FactCount Nothing
 --             ]
 --           }
 --    pageViewEventsTable =
@@ -105,11 +104,11 @@ import qualified Ringo.Validator as V
 --           , factTablePersistent = True
 --           , factParentNames = [ "session" ]
 --           , factColumns =
---             [ DimTime "created_at"
---             , NoDimId "publisher_id"
---             , DimVal "page_type" "page_type"
---             , DimId "referrers" "referrer_id"
---             , FactCount Nothing "view_count"
+--             [ FactColumn "created_at" $ DimTime
+--             , FactColumn "publisher_id" $ NoDimId
+--             , FactColumn "page_type" $ DimVal "page_type"
+--             , FactColumn "referrer_id" $ DimId "referrers"
+--             , FactColumn "view_count" $ FactCount Nothing
 --             ]
 --           }
 --    referrersTable =

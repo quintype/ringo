@@ -1,6 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE PatternSynonyms #-}
+
 module Ringo.Validator
        ( validateTable
        , validateFact
@@ -51,17 +54,19 @@ validateFact Fact {..} = do
       parentVs          <- concat <$> mapM checkFactParents factParentNames
       let colVs         = concatMap (checkColumn tables table) factColumns
           timeVs        = [ MissingTimeColumn factTableName
-                            | null [ c | DimTime c <- factColumns ] ]
-          notNullVs     = [ MissingNotNullConstraint factTableName c
-                            | DimTime c <- factColumns
-                            , let col   = findColumn c (tableColumns table)
+                            | null ([ cName | DimTimeV cName <- factColumns ] :: [ColumnName]) ]
+          notNullVs     = [ MissingNotNullConstraint factTableName cName
+                            | DimTimeV cName <- factColumns
+                            , let col        = findColumn cName (tableColumns table)
                             , isJust col
                             , columnNullable (fromJust col) == Null ]
+
           typeDefaultVs =
             [ MissingTypeDefault cType
-              | cName   <- [ c | DimVal _ c <- factColumns ]
-                             ++ [ c | NoDimId c  <- factColumns ]
-                             ++ [ c | TenantId c <- factColumns ]
+              | cName   <- [ c | DimValV   c <- factColumns ]
+                        ++ [ c | NoDimIdV  c <- factColumns ]
+                        ++ [ c | TenantIdV c <- factColumns ]
+                        ++ [ c | DimIdV    c <- factColumns ]
               , let col = findColumn cName (tableColumns table)
               , isJust col
               , let cType = columnType $ fromJust col
@@ -79,6 +84,7 @@ validateFact Fact {..} = do
       maybe [] (checkTableForCol table) (factSourceColumnName factCol)
         ++ checkColumnTable tables factCol
 
-    checkColumnTable tables factCol = case factCol of
-      DimId tName _  -> maybe [ MissingTable tName ] (const []) $ findTable tName tables
-      _              -> []
+    checkColumnTable :: [Table] -> FactColumn -> [ValidationError]
+    checkColumnTable tables FactColumn {..} = case factColType of
+      DimId {factColTargetTable = tName} -> maybe [ MissingTable tName ] (const []) $ findTable tName tables
+      _                                  -> []

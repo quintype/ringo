@@ -1,6 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE PatternSynonyms #-}
+
 module Ringo.Generator.Create (dimensionTableDefnSQL, factTableDefnSQL) where
 
 #if MIN_VERSION_base(4,8,0)
@@ -73,20 +76,21 @@ factTableIndexStmts fact table = do
   tables        <- asks envTables
   allDims       <- extractAllDimensionTables fact
 
-  let dimTimeCol           = head [ cName | DimTime cName <- factColumns fact ]
-      tenantIdCol          = listToMaybe [ cName | TenantId cName <- factColumns fact ]
+  let dimTimeCol           = head [ cName | DimTimeV cName <- factColumns fact ]
+      tenantIdCol          = listToMaybe [ cName | TenantIdV cName <- factColumns fact ]
       tabName              = tableName table <> settingTableNameSuffixTemplate
       dimTimeColName cName = timeUnitColumnName settingDimTableIdColumnName cName settingTimeUnit
 
-      factCols = forMaybe (factColumns fact) $ \col -> case col of
-        DimTime cName  -> Just [dimTimeColName cName]
-        NoDimId cName  -> Just [cName]
-        TenantId cName -> Just [cName]
-        _              -> Nothing
+      factCols = forMaybe (factColumns fact) $ \FactColumn {factColTargetColumn = cName, ..} ->
+        case factColType of
+          DimTime   -> Just [dimTimeColName cName]
+          NoDimId   -> Just [cName]
+          TenantId  -> Just [cName]
+          _               -> Nothing
 
       dimCols  = [ [ factDimFKIdColumnName settingDimPrefix settingDimTableIdColumnName dimFact dimTable tables ]
                    | (dimFact, dimTable) <- allDims ]
 
-  return [ CreateIndexTSQL ea (nmc "") (name $ tabName) (map nmc cols)
+  return [ CreateIndexTSQL ea (nmc "") (name tabName) (map nmc cols)
            | cols <- factCols ++ dimCols ++ [ [cName, dimTimeColName dimTimeCol]
                                                        | cName <- maybeToList tenantIdCol ] ]
