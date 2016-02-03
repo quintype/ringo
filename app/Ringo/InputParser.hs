@@ -1,3 +1,6 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE CPP #-}
 module Ringo.InputParser (parseInput) where
 
 import qualified Data.Text as Text
@@ -50,17 +53,17 @@ instance FromJSON FactColumn where
   parseJSON (Object o) = do
     cType <- o .: "type"
     case cType of
-      "dimtime"           -> DimTime           <$> o .: "column"
-      "nodimid"           -> NoDimId           <$> o .: "column"
-      "tenantid"          -> TenantId          <$> o .: "column"
-      "dimid"             -> DimId             <$> o .: "table"         <*> o .: "column"
-      "dimval"            -> DimVal            <$> o .: "table"         <*> o .: "column"
-      "factcount"         -> FactCount         <$> o .:? "sourcecolumn" <*> o .: "column"
-      "factsum"           -> FactSum           <$> o .: "sourcecolumn"  <*> o .: "column"
-      "factaverage"       -> FactAverage       <$> o .: "sourcecolumn"  <*> o .: "column"
-      "factcountdistinct" -> FactCountDistinct <$> o .:? "sourcecolumn" <*> o .: "column"
-      "factmax"           -> FactMax           <$> o .: "sourcecolumn"  <*> o .: "column"
-      "factmin"           -> FactMin           <$> o .: "sourcecolumn"  <*> o .: "column"
+      "dimtime"           -> FactColumn <$> o .: "column" <*> pure DimTime
+      "nodimid"           -> FactColumn <$> o .: "column" <*> pure NoDimId
+      "tenantid"          -> FactColumn <$> o .: "column" <*> pure TenantId
+      "dimid"             -> FactColumn <$> o .: "column" <*> (DimId             <$> o .: "table")
+      "dimval"            -> FactColumn <$> o .: "column" <*> (DimVal            <$> o .: "table")
+      "factcount"         -> FactColumn <$> o .: "column" <*> (FactCount         <$> o .:? "sourcecolumn")
+      "factcountdistinct" -> FactColumn <$> o .: "column" <*> (FactCountDistinct <$> o .:? "sourcecolumn")
+      "factsum"           -> FactColumn <$> o .: "column" <*> (FactSum           <$> o .: "sourcecolumn")
+      "factaverage"       -> FactColumn <$> o .: "column" <*> (FactAverage       <$> o .: "sourcecolumn")
+      "factmax"           -> FactColumn <$> o .: "column" <*> (FactMax           <$> o .: "sourcecolumn")
+      "factmin"           -> FactColumn <$> o .: "column" <*> (FactMin           <$> o .: "sourcecolumn")
       _                   -> fail $ "Invalid fact column type: " ++ cType
   parseJSON o          = fail $ "Cannot parse fact column: " ++ show o
 
@@ -72,7 +75,7 @@ instance FromJSON Fact where
                               <*> o .: "columns"
   parseJSON o          = fail $ "Cannot parse fact: " ++ show o
 
-data Input = Input [Table] [Fact] TypeDefaults deriving (Eq, Show)
+data Input = Input [Table] [Fact] TypeDefaults deriving (Show)
 
 instance FromJSON Input where
   parseJSON (Object o) = Input <$> o .: "tables" <*> o .: "facts" <*> o .: "defaults"

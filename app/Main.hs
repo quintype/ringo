@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 module Main where
 
 import qualified Data.ByteString.Lazy as BS
@@ -7,7 +9,6 @@ import qualified Data.Text            as Text
 import Data.Aeson       (encode)
 import Data.Char        (toLower)
 import Data.List        (nub)
-import Data.Monoid      ((<>))
 import Control.Monad    (forM_)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath  ((</>), (<.>))
@@ -80,4 +81,4 @@ writeFiles outputDir env@Env{..} = do
                   , factTablePopulateSQLs IncRefresh  $ factTablePopulateSQL IncrementalPopulation
                   ]
 
-    sqlStr s = Text.unpack $ s <> ";\n"
+    sqlStr = Text.unpack

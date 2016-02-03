@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP #-}
 module Ringo.Utils where
 
 import qualified Control.Arrow as Arrow
