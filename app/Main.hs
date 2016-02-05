@@ -1,5 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ViewPatterns #-}
+
 module Main where
 
 import qualified Data.ByteString.Lazy as BS
@@ -8,7 +10,6 @@ import qualified Data.Text            as Text
 
 import Data.Aeson       (encode)
 import Data.Char        (toLower)
-import Data.List        (nub)
 import Control.Monad    (forM_)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath  ((</>), (<.>))
@@ -27,14 +28,12 @@ main = do
   case result of
     Left err                        -> putStrLn err >> exitFailure
     Right (tables, facts, defaults) -> do
-      let env    = Env tables facts progSettings defaults
-      let errors = nub $ concatMap (validateTable env) tables ++ concatMap (validateFact env) facts
-      if not $ null errors
-        then mapM_ print errors           >> exitFailure
-        else writeFiles progOutputDir env >> exitSuccess
+      case makeEnv tables facts progSettings defaults of
+        Left errors -> mapM_ print errors           >> exitFailure
+        Right env   -> writeFiles progOutputDir env >> exitSuccess
 
 writeFiles :: FilePath -> Env -> IO ()
-writeFiles outputDir env@Env{..} = do
+writeFiles outputDir env@(envView -> EnvV{..}) = do
   let Settings{..} = envSettings
   forM_ sqls $ \(sqlType, table, sql) -> do
     let dirName = outputDir </> map toLower (show sqlType)

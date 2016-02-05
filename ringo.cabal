@@ -26,6 +26,7 @@ library
                        Ringo.Generator.Create,
                        Ringo.Generator.Populate.Dimension,
                        Ringo.Generator.Populate.Fact,
+                       Ringo.Types.Internal,
                        Ringo.Utils
   build-depends:       base           >=4.7 && <5,
                        text           >=1.2 && <1.3,

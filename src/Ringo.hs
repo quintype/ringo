@@ -12,8 +12,7 @@ module Ringo
        , factTableDefnSQL
        , dimensionTablePopulateSQL
        , factTablePopulateSQL
-       , validateTable
-       , validateFact
+       , makeEnv
        ) where
 
 import Control.Monad.Reader (runReader)
@@ -135,8 +134,13 @@ import qualified Ringo.Validator as V
 --                                , ("text", "'__UNKNOWN_VAL__'")
 --                                ]
 --    settings     = defSettings { settingTableNameSuffixTemplate = "" }
---    env          = Env tables facts settings typeDefaults
+--    env          = case makeEnv tables facts settings typeDefaults of
+--                     Left errors -> error . unlines . map show $ errors
+--                     Right env   -> env
 -- :}
+
+makeEnv :: [Table] -> [Fact] -> Settings -> TypeDefaults -> Either [ValidationError] Env
+makeEnv = V.validateEnv
 
 -- |
 --
@@ -615,17 +619,3 @@ dimensionTablePopulateSQL popMode env fact =
 factTablePopulateSQL :: TablePopulationMode -> Env -> Fact -> [Text]
 factTablePopulateSQL popMode env =
   flip runReader env . G.factTablePopulateSQL popMode
-
--- |
---
--- >>> concatMap (validateTable env) tables
--- []
-validateTable :: Env -> Table -> [ValidationError]
-validateTable env = flip runReader env . V.validateTable
-
--- |
---
--- >>> concatMap (validateFact env) facts
--- []
-validateFact :: Env -> Fact -> [ValidationError]
-validateFact env = flip runReader env . V.validateFact

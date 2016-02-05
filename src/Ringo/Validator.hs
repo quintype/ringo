@@ -4,10 +4,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE PatternSynonyms #-}
 
-module Ringo.Validator
-       ( validateTable
-       , validateFact
-       ) where
+module Ringo.Validator (validateEnv) where
 
 import qualified Data.Map as Map
 import qualified Data.Text as Text
@@ -17,20 +14,25 @@ import qualified Data.Text as Text
 import Control.Applicative ((<$>))
 #endif
 
-import Control.Monad.Reader (Reader, asks)
+import Control.Monad.Reader (Reader, ask, runReader)
 import Data.Maybe           (isJust, fromJust)
+import Data.List            (nub, group, sort)
 
 import Ringo.Extractor.Internal
 import Ringo.Types
+import Ringo.Types.Internal
+import Ringo.Utils
+
+data RawEnv = RawEnv ![Table] ![Fact] !Settings !TypeDefaults deriving (Show)
 
 checkTableForCol :: Table -> ColumnName -> [ValidationError]
 checkTableForCol tab colName =
   [ MissingColumn (tableName tab) colName |
       not . any ((colName ==) . columnName) . tableColumns $ tab ]
 
-validateTable :: Table -> Reader Env [ValidationError]
+validateTable :: Table -> Reader RawEnv [ValidationError]
 validateTable table = do
-  tables   <- asks envTables
+  RawEnv tables _ _ _ <- ask
   return . concatMap (checkConstraint tables) . tableConstraints $ table
   where
     checkConstraint _ (PrimaryKey colName)    = checkTableForCol table colName
@@ -43,10 +45,10 @@ validateTable table = do
 
     checkTableForColRefs tab = concatMap (checkTableForCol tab)
 
-validateFact :: Fact -> Reader Env [ValidationError]
+validateFact :: Fact -> Reader RawEnv [ValidationError]
 validateFact Fact {..} = do
-  tables <- asks envTables
-  defaults <- Map.keys <$> asks envTypeDefaults
+  RawEnv tables _ _ typeDefaults <- ask
+  let defaults = Map.keys typeDefaults
   case findTable factTableName tables of
     Nothing    -> return [ MissingTable factTableName ]
     Just table -> do
@@ -75,7 +77,7 @@ validateFact Fact {..} = do
       return $ tableVs ++ parentVs ++ colVs ++ timeVs ++ notNullVs ++ typeDefaultVs
   where
     checkFactParents fName = do
-      facts <- asks envFacts
+      RawEnv _ facts _ _ <- ask
       case findFact fName facts of
         Nothing    -> return [ MissingFact fName ]
         Just pFact -> validateFact pFact
@@ -88,3 +90,21 @@ validateFact Fact {..} = do
     checkColumnTable tables FactColumn {..} = case factColType of
       DimId {factColTargetTable = tName} -> maybe [ MissingTable tName ] (const []) $ findTable tName tables
       _                                  -> []
+
+validateEnv :: [Table] -> [Fact] -> Settings -> TypeDefaults -> Either [ValidationError] Env
+validateEnv tables facts settings typeDefaults =
+  flip runReader (RawEnv tables facts settings typeDefaults) $ do
+    tableVs <- concat <$> mapM validateTable tables
+    factVs  <- concat <$> mapM validateFact facts
+    let dupTableVs = [ DuplicateTable table | table <- findDups . map tableName $ tables ]
+    let dupFactVs  = [ DuplicateFact fact   | fact  <- findDups . map factName $ facts ]
+    let dupColVs   = [ DuplicateColumn tableName col
+                       | Table{..} <- tables
+                       , col       <- findDups . map columnName $ tableColumns ]
+    let vs = nub $ tableVs ++ factVs ++ dupTableVs ++ dupFactVs ++ dupColVs
+    if null vs
+      then return . Right $ Env tables facts settings typeDefaults
+      else return . Left  $ vs
+  where
+    findDups =
+      sort >>> group >>> map (head &&& length) >>> filter (snd >>> (> 1)) >>> map fst

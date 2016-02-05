@@ -11,7 +11,7 @@ module Ringo.Generator.Create (dimensionTableDefnSQL, factTableDefnSQL) where
 import Control.Applicative ((<$>))
 #endif
 
-import Control.Monad.Reader     (Reader, asks)
+import Control.Monad.Reader     (Reader, asks, withReader)
 import Database.HsSqlPpp.Syntax ( Statement(..), RowConstraint(..), AlterTableAction(..)
                                 , AlterTableOperation(..), Constraint(..), Cascade(..) )
 import Data.Maybe               (listToMaybe, maybeToList)
@@ -24,7 +24,7 @@ import Ringo.Types
 import Ringo.Utils
 
 tableDefnStmts :: Table -> Reader Env [Statement]
-tableDefnStmts Table {..} = do
+tableDefnStmts Table {..} = withReader envView $ do
   Settings {..} <- asks envSettings
   let tabName  = tableName <> settingTableNameSuffixTemplate
 
@@ -58,7 +58,7 @@ dimensionTableDefnSQL :: Table -> Reader Env [Text]
 dimensionTableDefnSQL table = tableDefnSQL table dimensionTableIndexStmts
 
 dimensionTableIndexStmts :: Table -> Reader Env [Statement]
-dimensionTableIndexStmts Table {..} = do
+dimensionTableIndexStmts Table {..} = withReader envView $do
   Settings {..} <- asks envSettings
   let tabName        = tableName <> settingTableNameSuffixTemplate
       tablePKColName = head [ cName | PrimaryKey cName <- tableConstraints ]
@@ -72,25 +72,26 @@ factTableDefnSQL fact table = tableDefnSQL table (factTableIndexStmts fact)
 
 factTableIndexStmts :: Fact -> Table -> Reader Env [Statement]
 factTableIndexStmts fact table = do
-  Settings {..} <- asks envSettings
-  tables        <- asks envTables
-  allDims       <- extractAllDimensionTables fact
+  allDims <- extractAllDimensionTables fact
+  withReader envView $ do
+    Settings {..} <- asks envSettings
+    tables        <- asks envTables
 
-  let dimTimeCol           = head [ cName | DimTimeV cName <- factColumns fact ]
-      tenantIdCol          = listToMaybe [ cName | TenantIdV cName <- factColumns fact ]
-      tabName              = tableName table <> settingTableNameSuffixTemplate
-      dimTimeColName cName = timeUnitColumnName settingDimTableIdColumnName cName settingTimeUnit
+    let dimTimeCol           = head [ cName | DimTimeV cName <- factColumns fact ]
+        tenantIdCol          = listToMaybe [ cName | TenantIdV cName <- factColumns fact ]
+        tabName              = tableName table <> settingTableNameSuffixTemplate
+        dimTimeColName cName = timeUnitColumnName settingDimTableIdColumnName cName settingTimeUnit
 
-      factCols = forMaybe (factColumns fact) $ \FactColumn {factColTargetColumn = cName, ..} ->
-        case factColType of
-          DimTime   -> Just [dimTimeColName cName]
-          NoDimId   -> Just [cName]
-          TenantId  -> Just [cName]
-          _               -> Nothing
+        factCols = forMaybe (factColumns fact) $ \FactColumn {factColTargetColumn = cName, ..} ->
+          case factColType of
+            DimTime   -> Just [dimTimeColName cName]
+            NoDimId   -> Just [cName]
+            TenantId  -> Just [cName]
+            _               -> Nothing
 
-      dimCols  = [ [ factDimFKIdColumnName settingDimPrefix settingDimTableIdColumnName dimFact dimTable tables ]
-                   | (dimFact, dimTable) <- allDims ]
+        dimCols  = [ [ factDimFKIdColumnName settingDimPrefix settingDimTableIdColumnName dimFact dimTable tables ]
+                     | (dimFact, dimTable) <- allDims ]
 
-  return [ CreateIndexTSQL ea (nmc "") (name tabName) (map nmc cols)
-           | cols <- factCols ++ dimCols ++ [ [cName, dimTimeColName dimTimeCol]
-                                                       | cName <- maybeToList tenantIdCol ] ]
+    return [ CreateIndexTSQL ea (nmc "") (name tabName) (map nmc cols)
+             | cols <- factCols ++ dimCols ++ [ [cName, dimTimeColName dimTimeCol]
+                                                         | cName <- maybeToList tenantIdCol ] ]

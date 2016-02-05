@@ -10,7 +10,7 @@ module Ringo.Generator.Populate.Dimension (dimensionTablePopulateSQL) where
 import Control.Applicative ((<$>))
 #endif
 
-import Control.Monad.Reader     (Reader, asks)
+import Control.Monad.Reader     (Reader, asks, withReader)
 import Database.HsSqlPpp.Syntax (Statement, QueryExpr(..), Distinct(..), makeSelect, JoinType(..))
 import Data.Maybe               (fromJust)
 import Data.Text                (Text)
@@ -25,7 +25,7 @@ dimensionTablePopulateSQL popMode fact dimTableName =
   ppStatement <$> dimensionTablePopulateStmt popMode fact dimTableName
 
 dimensionTablePopulateStmt :: TablePopulationMode -> Fact -> TableName -> Reader Env Statement
-dimensionTablePopulateStmt popMode fact dimTableName = do
+dimensionTablePopulateStmt popMode fact dimTableName = withReader envView $ do
   Settings {..}    <- asks envSettings
   tables           <- asks envTables
   defaults         <- asks envTypeDefaults

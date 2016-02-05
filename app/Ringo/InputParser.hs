@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE CPP #-}
+
 module Ringo.InputParser (parseInput) where
 
 import qualified Data.Text as Text
@@ -85,5 +86,5 @@ parseInput :: FilePath -> IO (Either String ([Table], [Fact], TypeDefaults))
 parseInput file = do
   result <- decodeFileEither file
   return $ case result of
-    Left pe                    -> Left $ prettyPrintParseException pe
+    Left pe                             -> Left $ prettyPrintParseException pe
     Right (Input tables facts defaults) -> Right (tables, facts, defaults)
