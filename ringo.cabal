@@ -52,7 +52,7 @@ executable ringo
                        vector               >=0.10    && <0.12,
                        directory            >=1.2     && <1.3,
                        filepath             >=1.3     && <1.5,
-                       aeson                >=0.8     && <0.11,
+                       aeson                >=0.8     && <0.12,
                        ringo
   ghc-options:         -Wall -Werror -fwarn-incomplete-uni-patterns -fno-warn-unused-do-bind
                        -fno-warn-orphans -funbox-strict-fields -O2
