@@ -5,7 +5,10 @@ module Ringo.ArgParser (ProgArgs(..), parseArgs) where
 import qualified Data.Text as Text
 
 import Data.List (intercalate)
+import Data.Version (showVersion)
 import Options.Applicative
+
+import Paths_ringo (version)
 
 import Ringo.Types
 
@@ -95,9 +98,14 @@ progArgsParser =
                     <> action "directory"
                     <> help "Output directory")
 
+versionParser :: Parser (a -> a)
+versionParser = infoOption ("ringo " ++ showVersion version)
+  (long "version"
+   <> help "Print version information")
+
 parseArgs :: IO ProgArgs
 parseArgs = execParser $
-  info (helper <*> progArgsParser)
+  info (helper <*> versionParser <*> progArgsParser)
        (fullDesc
         <> progDesc "Transforms OLTP database schemas to OLAP database star schemas"
         <> header "ringo - OLTP to OLAP schema transformer"
