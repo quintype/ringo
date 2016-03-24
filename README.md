@@ -15,7 +15,7 @@
  - Git clone this repository:
  
    ```sh
-   > git clone https://github.com/quintype/ringo
+   > git clone --recursive https://github.com/quintype/ringo
    ```
  - Run the following commands in the terminal:
  
