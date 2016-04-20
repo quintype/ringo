@@ -66,7 +66,7 @@ test-suite ringo-test
     build-depends:       base
                        , ringo
                        , pretty-show >=1.6 && <1.7
-                       , doctest     >=0.9 && <0.11
+                       , doctest     >=0.9 && <0.12
   else
     buildable: False
   default-language:    Haskell2010
