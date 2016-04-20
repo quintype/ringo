@@ -1,14 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Ringo.ArgParser (ProgArgs(..), parseArgs) where
 
 import qualified Data.Text as Text
+import qualified Distribution.Package as P
+import qualified Distribution.PackageDescription as P
+import qualified Distribution.CurrentPackageDescription as P
+import qualified Distribution.Text as DText
 
-import Data.List (intercalate)
-import Data.Version (showVersion)
+import Data.List                              (intercalate)
 import Options.Applicative
-
-import Paths_ringo (version)
 
 import Ringo.Types
 
@@ -98,15 +100,20 @@ progArgsParser =
                     <> action "directory"
                     <> help "Output directory")
 
+progName :: String
+progName = $(P.getField (DText.display . P.pkgName . P.package))
+
 versionParser :: Parser (a -> a)
-versionParser = infoOption ("ringo " ++ showVersion version)
+versionParser = infoOption (progName ++ " " ++ version)
   (long "version"
    <> help "Print version information")
+  where
+    version = $(P.getField (DText.display . P.pkgVersion . P.package))
 
 parseArgs :: IO ProgArgs
 parseArgs = execParser $
   info (helper <*> versionParser <*> progArgsParser)
        (fullDesc
-        <> progDesc "Transforms OLTP database schemas to OLAP database star schemas"
-        <> header "ringo - OLTP to OLAP schema transformer"
-        <> footer "Source: http://github.com/quintype/ringo")
+        <> progDesc $(P.getField P.description)
+        <> header (progName ++ " - " ++ $(P.getField P.synopsis))
+        <> footer ("© " ++ $(P.getField P.copyright) ++ ". " ++ $(P.getField P.homepage)))
