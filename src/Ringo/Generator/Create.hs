@@ -13,7 +13,8 @@ import Control.Applicative ((<$>))
 
 import Control.Monad.Reader     (Reader, asks, withReader)
 import Database.HsSqlPpp.Syntax ( Statement(..), RowConstraint(..), AlterTableAction(..)
-                                , AlterTableOperation(..), Constraint(..), Cascade(..) )
+                                , AlterTableOperation(..), Constraint(..), Cascade(..)
+                                , Replace(..) )
 import Data.Maybe               (listToMaybe, maybeToList)
 import Data.Monoid              ((<>))
 import Data.Text                (Text)
@@ -28,7 +29,7 @@ tableDefnStmts Table {..} = withReader envView $ do
   Settings {..} <- asks envSettings
   let tabName  = tableName <> settingTableNameSuffixTemplate
 
-      tableSQL = CreateTable ea (name tabName) (map columnDefnSQL tableColumns) [] Nothing
+      tableSQL = CreateTable ea (name tabName) (map columnDefnSQL tableColumns) [] Nothing NoReplace
 
       columnDefnSQL Column {..} =
         attDef columnName columnType $ nullableDefnSQL columnNullable
